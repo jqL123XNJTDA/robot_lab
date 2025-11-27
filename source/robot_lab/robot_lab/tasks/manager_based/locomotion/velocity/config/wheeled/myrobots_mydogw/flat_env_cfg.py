@@ -69,29 +69,32 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         # ------------------------------Handstand Rewards------------------------------
         handstand_type = "back"  # 使用前腿支撑倒立
         if handstand_type == "front":
-            air_foot_pattern = "F.*_foot"
-            knee_patterns = ["F.*(thigh|calf).*"]
+            air_foot_pattern = "F.*_foot"      # 前轮悬空检测
+            air_calf_pattern = "F.*_calf"      # 前腿小腿高度检测
+            knee_patterns = ["F.*(hip|thigh|calf)"]
             target_gravity = [-1.0, 0.0, 0.0]
         else:
-            air_foot_pattern = "R.*_foot"
-            knee_patterns = ["R.*(thigh|calf).*"]
+            air_foot_pattern = "R.*_foot"      # 后轮悬空检测
+            air_calf_pattern = "R.*_calf"      # 后腿小腿高度检测
+            knee_patterns = ["R.*(hip|thigh|calf)"]
             target_gravity = [1.0, 0.0, 0.0]
 
         self.rewards.handstand_orientation_l2.weight = -1.0
         self.rewards.handstand_orientation_l2.params["target_gravity"] = target_gravity
 
+        # 高度检测改为 calf（小腿），更稳定
         self.rewards.handstand_feet_height_exp.weight = 8.0
-        self.rewards.handstand_feet_height_exp.params["asset_cfg"].body_names = [air_foot_pattern]
-        self.rewards.handstand_feet_height_exp.params["target_height"] = 0.55
+        self.rewards.handstand_feet_height_exp.params["asset_cfg"].body_names = [air_calf_pattern]
+        self.rewards.handstand_feet_height_exp.params["target_height"] = 0.45  # 小腿目标高度
 
         self.rewards.handstand_feet_on_air.weight = 6.0
         self.rewards.handstand_feet_on_air.params["sensor_cfg"].body_names = [air_foot_pattern]
         self.rewards.handstand_feet_on_air.params["threshold"] = 5.0
         self.rewards.handstand_feet_on_air.params["knee_body_names"] = knee_patterns
 
-        self.rewards.handstand_feet_air_time.weight = 4.0
+        self.rewards.handstand_feet_air_time.weight = 6.0  # 提高权重
         self.rewards.handstand_feet_air_time.params["_sensor_cfg"].body_names = [air_foot_pattern]
-        self.rewards.handstand_feet_air_time.params["_threshold"] = 0.3
+        self.rewards.handstand_feet_air_time.params["_threshold"] = 0.1  # 降低门槛，更容易获得正奖励
         self.rewards.handstand_feet_air_time.params["_knee_body_names"] = knee_patterns
         self.rewards.handstand_feet_air_time.params["_contact_force_threshold"] = 5.0
 
