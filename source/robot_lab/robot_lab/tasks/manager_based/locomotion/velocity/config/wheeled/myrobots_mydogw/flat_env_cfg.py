@@ -100,6 +100,10 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         self.rewards.handstand_front_leg_undesired_contacts.params["sensor_cfg"].body_names = ["F.*(hip|thigh|calf)"]
         self.rewards.handstand_front_leg_undesired_contacts.params["threshold"] = 1.0
 
+        # 身体接触地面惩罚 - 机器人躯干(base_link)接触地面时给予惩罚
+        self.rewards.handstand_body_contact.weight = -15.0
+        self.rewards.handstand_body_contact.params["threshold"] = 1.0
+
         # ------------------------------Events------------------------------
         # 关闭复位随机化，保持每次 episode 初始姿态一致
         #self.events.randomize_reset_base = None

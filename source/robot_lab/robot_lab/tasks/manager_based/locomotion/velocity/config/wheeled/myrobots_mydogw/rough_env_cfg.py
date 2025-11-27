@@ -104,6 +104,16 @@ class MyDogRewardsCfg(RewardsCfg):
         },
     )
 
+    # 身体接触地面惩罚 - 机器人躯干(base_link)接触地面时给予惩罚
+    handstand_body_contact = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=0.0,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["base_link"]),
+            "threshold": 1.0,
+        },
+    )
+
 
 @configclass
 class MyDogRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
