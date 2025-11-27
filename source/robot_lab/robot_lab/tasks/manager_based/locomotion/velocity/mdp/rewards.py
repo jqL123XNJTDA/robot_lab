@@ -820,13 +820,28 @@ class HandstandFeetAirTimeReward(ManagerTermBase):
         """
         super().__init__(cfg, env)
 
-        # 提取配置参数
-        self.threshold = cfg.params["threshold"]
-        self.force_threshold = cfg.params.get("contact_force_threshold", 1.0)
-        self.contact_sensor = env.scene.sensors[cfg.params["sensor_cfg"].name]
-        self.sensor_cfg = cfg.params["sensor_cfg"]
-        self.asset = env.scene[cfg.params["asset_cfg"].name]
-        self.knee_body_names = cfg.params.get("knee_body_names", None)
+        params = cfg.params
+
+        def _resolve_param(name: str, required: bool = True, default=None):
+            """Helper to support both `name` and `_name` keys."""
+            if name in params:
+                return params[name]
+            underscored = f"_{name}"
+            if underscored in params:
+                return params[underscored]
+            if required:
+                raise KeyError(
+                    f"Missing required parameter '{name}' (or '{underscored}') for HandstandFeetAirTimeReward."
+                )
+            return default
+
+        # 提取配置参数（兼容旧配置的命名）
+        self.threshold = _resolve_param("threshold")
+        self.sensor_cfg = _resolve_param("sensor_cfg")
+        self.asset = env.scene[_resolve_param("asset_cfg").name]
+        self.contact_sensor = env.scene.sensors[self.sensor_cfg.name]
+        self.knee_body_names = _resolve_param("knee_body_names", required=False, default=None)
+        self.force_threshold = _resolve_param("contact_force_threshold", required=False, default=1.0)
 
         # 获取膝盖刚体索引
         if self.knee_body_names is not None and len(self.knee_body_names) > 0:
@@ -858,11 +873,11 @@ class HandstandFeetAirTimeReward(ManagerTermBase):
     def __call__(
         self,
         env: ManagerBasedRLEnv,
-        threshold: float,
-        sensor_cfg: SceneEntityCfg,
-        knee_body_names: list[str] | None,
-        asset_cfg: SceneEntityCfg,
-        contact_force_threshold: float | None = None,
+        _threshold: float,
+        _sensor_cfg: SceneEntityCfg,
+        _knee_body_names: list[str] | None,
+        _asset_cfg: SceneEntityCfg,
+        _contact_force_threshold: float | None = None,
     ) -> torch.Tensor:
         """计算奖励
 
@@ -872,8 +887,7 @@ class HandstandFeetAirTimeReward(ManagerTermBase):
         Returns:
             torch.Tensor: 奖励值 (batch_size,)
         """
-        _ = (threshold, sensor_cfg, knee_body_names, asset_cfg)  # parameters kept for interface compatibility
-        force_threshold = self.force_threshold if contact_force_threshold is None else contact_force_threshold
+        force_threshold = self.force_threshold if _contact_force_threshold is None else _contact_force_threshold
 
         # 检查足部接触状态 (batch_size, num_feet)
         feet_contact = self.contact_sensor.data.net_forces_w[:, self.sensor_cfg.body_ids, 2] > force_threshold

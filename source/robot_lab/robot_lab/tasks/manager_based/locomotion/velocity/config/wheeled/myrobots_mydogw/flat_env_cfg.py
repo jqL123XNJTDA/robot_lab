@@ -90,10 +90,15 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         self.rewards.handstand_feet_on_air.params["knee_body_names"] = knee_patterns
 
         self.rewards.handstand_feet_air_time.weight = 4.0
-        self.rewards.handstand_feet_air_time.params["sensor_cfg"].body_names = [air_foot_pattern]
-        self.rewards.handstand_feet_air_time.params["threshold"] = 0.3
-        self.rewards.handstand_feet_air_time.params["knee_body_names"] = knee_patterns
-        self.rewards.handstand_feet_air_time.params["contact_force_threshold"] = 5.0
+        self.rewards.handstand_feet_air_time.params["_sensor_cfg"].body_names = [air_foot_pattern]
+        self.rewards.handstand_feet_air_time.params["_threshold"] = 0.3
+        self.rewards.handstand_feet_air_time.params["_knee_body_names"] = knee_patterns
+        self.rewards.handstand_feet_air_time.params["_contact_force_threshold"] = 5.0
+
+        # 前腿不良接触惩罚 - 只允许前轮接触地面，惩罚前腿 hip/thigh/calf 接触地面
+        self.rewards.handstand_front_leg_undesired_contacts.weight = -10.0
+        self.rewards.handstand_front_leg_undesired_contacts.params["sensor_cfg"].body_names = ["F.*(hip|thigh|calf)"]
+        self.rewards.handstand_front_leg_undesired_contacts.params["threshold"] = 1.0
 
         # ------------------------------Events------------------------------
         # 关闭复位随机化，保持每次 episode 初始姿态一致

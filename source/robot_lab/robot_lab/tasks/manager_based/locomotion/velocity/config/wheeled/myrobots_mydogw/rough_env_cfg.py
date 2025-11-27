@@ -79,11 +79,11 @@ class MyDogRewardsCfg(RewardsCfg):
         func=mdp.HandstandFeetAirTimeReward,
         weight=0.0,
         params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[ ".*_foot" ]),
-            "asset_cfg": SceneEntityCfg("robot"),
-            "threshold": 0.4,
-            "knee_body_names": [".*(thigh|calf).*"],
-            "contact_force_threshold": 5.0,
+            "_sensor_cfg": SceneEntityCfg("contact_forces", body_names=[ ".*_foot" ]),
+            "_asset_cfg": SceneEntityCfg("robot"),
+            "_threshold": 0.4,
+            "_knee_body_names": [".*(thigh|calf).*"],
+            "_contact_force_threshold": 5.0,
         },
     )
     handstand_orientation_l2 = RewTerm(
@@ -91,6 +91,16 @@ class MyDogRewardsCfg(RewardsCfg):
         weight=0.0,
         params={
             "target_gravity": [1.0, 0.0, 0.0],
+        },
+    )
+
+    # 前腿不良接触惩罚 - 只允许前轮(F.*_foot)接触地面，惩罚前腿hip/thigh/calf接触
+    handstand_front_leg_undesired_contacts = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=0.0,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["F.*(hip|thigh|calf)"]),
+            "threshold": 1.0,
         },
     )
 

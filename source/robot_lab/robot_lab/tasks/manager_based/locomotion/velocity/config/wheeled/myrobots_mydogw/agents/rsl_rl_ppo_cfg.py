@@ -40,5 +40,5 @@ class MyDogFlatPPORunnerCfg(MyDogRoughPPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.max_iterations = 5000
+        self.max_iterations = 20000
         self.experiment_name = "mydog_flat"

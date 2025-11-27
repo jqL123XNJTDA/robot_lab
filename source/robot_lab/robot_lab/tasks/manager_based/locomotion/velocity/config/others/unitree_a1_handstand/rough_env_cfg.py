@@ -43,8 +43,8 @@ class UnitreeA1HandStandRewardsCfg(RewardsCfg):
         func=rewards.handstand_feet_air_time,
         weight=0.0,
         params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=""),
-            "threshold": 5.0,
+            "_sensor_cfg": SceneEntityCfg("contact_forces", body_names=""),
+            "_threshold": 5.0,
         },
     )
 
@@ -188,7 +188,7 @@ class UnitreeA1HandStandRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.handstand_feet_on_air.weight = 5.0
         self.rewards.handstand_feet_on_air.params["sensor_cfg"].body_names = [air_foot_name]
         self.rewards.handstand_feet_air_time.weight = 5.0
-        self.rewards.handstand_feet_air_time.params["sensor_cfg"].body_names = [air_foot_name]
+        self.rewards.handstand_feet_air_time.params["_sensor_cfg"].body_names = [air_foot_name]
 
         # If the weight of rewards is 0, set rewards to None
         if self.__class__.__name__ == "UnitreeA1HandStandRoughEnvCfg":
