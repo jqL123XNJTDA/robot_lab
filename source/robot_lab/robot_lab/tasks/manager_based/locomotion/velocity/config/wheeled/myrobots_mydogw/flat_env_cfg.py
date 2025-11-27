@@ -83,7 +83,7 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         self.rewards.handstand_orientation_l2.params["target_gravity"] = target_gravity
 
         # 高度检测改为 calf（小腿），更稳定
-        self.rewards.handstand_feet_height_exp.weight = 8.0
+        self.rewards.handstand_feet_height_exp.weight = 4.0
         self.rewards.handstand_feet_height_exp.params["asset_cfg"].body_names = [air_calf_pattern]
         self.rewards.handstand_feet_height_exp.params["target_height"] = 0.45  # 小腿目标高度
 
@@ -101,12 +101,11 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         # 前腿不良接触惩罚 - 只允许前轮接触地面，惩罚前腿 hip/thigh/calf 接触地面
         self.rewards.handstand_front_leg_undesired_contacts.weight = -10.0
         self.rewards.handstand_front_leg_undesired_contacts.params["sensor_cfg"].body_names = ["F.*(hip|thigh|calf)"]
-        self.rewards.handstand_front_leg_undesired_contacts.params["threshold"] = 1.0
+        self.rewards.handstand_front_leg_undesired_contacts.params["threshold"] = 5.0
 
         # 身体接触地面惩罚 - 机器人躯干(base_link)接触地面时给予惩罚
         self.rewards.handstand_body_contact.weight = -15.0
-        self.rewards.handstand_body_contact.params["threshold"] = 1.0
-
+        self.rewards.handstand_body_contact.params["threshold"] = 5.0
         # ------------------------------Events------------------------------
         # 关闭复位随机化，保持每次 episode 初始姿态一致
         #self.events.randomize_reset_base = None

@@ -974,3 +974,33 @@ def handstand_orientation_l2(
     reward = torch.sum(torch.square(current_gravity - target_gravity_tensor), dim=1)
 
     return reward
+
+
+def handstand_undesired_contacts(
+    env: ManagerBasedRLEnv, threshold: float, sensor_cfg: SceneEntityCfg
+) -> torch.Tensor:
+    """倒立专用的不良接触惩罚 - 不受重力方向影响
+
+    与 undesired_contacts 的区别:
+        - 去掉了重力系数调制，倒立时惩罚不会被缩小
+        - 适用于倒立训练场景
+
+    Args:
+        env: ManagerBasedRLEnv 实例
+        threshold: 接触力阈值 [N]
+        sensor_cfg: 接触传感器配置
+
+    Returns:
+        torch.Tensor: 接触的 body 数量 (batch_size,)
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    # 检查接触力是否超过阈值
+    net_contact_forces = contact_sensor.data.net_forces_w_history
+    is_contact = (
+        torch.max(torch.norm(net_contact_forces[:, :, sensor_cfg.body_ids], dim=-1), dim=1)[0]
+        > threshold
+    )
+    # 统计接触的 body 数量
+    reward = torch.sum(is_contact, dim=1).float()
+    # 注意：这里没有重力系数调制，倒立时惩罚不会被缩小
+    return reward

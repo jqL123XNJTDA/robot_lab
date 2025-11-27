@@ -95,8 +95,9 @@ class MyDogRewardsCfg(RewardsCfg):
     )
 
     # 前腿不良接触惩罚 - 只允许前轮(F.*_foot)接触地面，惩罚前腿hip/thigh/calf接触
+    # 使用 handstand_undesired_contacts (无重力系数调制，倒立时惩罚不会被缩小)
     handstand_front_leg_undesired_contacts = RewTerm(
-        func=mdp.undesired_contacts,
+        func=mdp.handstand_undesired_contacts,
         weight=0.0,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["F.*(hip|thigh|calf)"]),
@@ -105,8 +106,9 @@ class MyDogRewardsCfg(RewardsCfg):
     )
 
     # 身体接触地面惩罚 - 机器人躯干(base_link)接触地面时给予惩罚
+    # 使用 handstand_undesired_contacts (无重力系数调制，倒立时惩罚不会被缩小)
     handstand_body_contact = RewTerm(
-        func=mdp.undesired_contacts,
+        func=mdp.handstand_undesired_contacts,
         weight=0.0,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["base_link"]),

@@ -211,6 +211,31 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # reset environment
     obs = env.get_observations()
     timestep = 0
+
+    # ========== 接触力调试 ==========
+    # 获取接触传感器
+    contact_sensor = env.unwrapped.scene.sensors.get("contact_forces", None)
+    if contact_sensor is not None:
+        body_names = contact_sensor.body_names
+        print(f"[DEBUG] Contact sensor body names: {body_names}")
+        # 找到前腿相关的 body 索引
+        import re
+        front_leg_pattern = re.compile(r"F.*(hip|thigh|calf)", re.IGNORECASE)
+        front_leg_ids = [i for i, name in enumerate(body_names) if front_leg_pattern.match(name)]
+        front_leg_names = [body_names[i] for i in front_leg_ids]
+        print(f"[DEBUG] Front leg bodies: {front_leg_names}, ids: {front_leg_ids}")
+
+        # base_link 索引
+        base_ids = [i for i, name in enumerate(body_names) if "base_link" in name.lower()]
+        print(f"[DEBUG] Base link ids: {base_ids}")
+    else:
+        front_leg_ids = []
+        base_ids = []
+        print("[DEBUG] No contact_forces sensor found!")
+
+    debug_print_interval = 50  # 每 50 步打印一次
+    # ================================
+
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
@@ -221,8 +246,36 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # actions = torch.zeros_like(actions)
             # env stepping
             obs, _, _, _ = env.step(actions)
+
+            # ========== 打印接触力 ==========
+            if contact_sensor is not None and timestep % debug_print_interval == 0:
+                forces = contact_sensor.data.net_forces_w  # (num_envs, num_bodies, 3)
+                num_envs = forces.shape[0]
+
+                print(f"\n[Step {timestep}] Contact forces (N):")
+                for env_id in range(num_envs):
+                    print(f"  --- Env {env_id} ---")
+
+                    # 前腿接触力
+                    if len(front_leg_ids) > 0:
+                        front_forces = forces[env_id, front_leg_ids, :]
+                        front_force_norms = torch.norm(front_forces, dim=-1)
+                        for name, force_norm in zip(front_leg_names, front_force_norms):
+                            contact_status = "CONTACT!" if force_norm > 1.0 else "air"
+                            print(f"    {name}: {force_norm.item():.2f} N  [{contact_status}]")
+
+                    # base_link 接触力
+                    if len(base_ids) > 0:
+                        base_forces = forces[env_id, base_ids, :]
+                        base_force_norm = torch.norm(base_forces, dim=-1)
+                        for i, bid in enumerate(base_ids):
+                            contact_status = "CONTACT!" if base_force_norm[i] > 1.0 else "air"
+                            print(f"    base_link: {base_force_norm[i].item():.2f} N  [{contact_status}]")
+            # ================================
+
+        timestep += 1  # 始终递增 timestep 用于调试
+
         if args_cli.video:
-            timestep += 1
             # Exit the play loop after recording one video
             if timestep == args_cli.video_length:
                 break
