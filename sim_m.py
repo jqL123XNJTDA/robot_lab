@@ -1071,9 +1071,9 @@ def run_mujoco(policy, mujoco_model_path, sim_duration, dt, decimation, debug=Fa
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Mujoco deployment')
-    parser.add_argument('--model-path', type=str, default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/myrobots/mydog/mjcf/thunder2_v1_complex_terrain.xml',
-                        help='Path to MuJoCo XML model. Available terrains: thunder2_v1.xml (complex), thunder2_v1_simple.xml (stairs only)')
-    parser.add_argument('--policy-path', type=str, default='/home/liu/Desktop/robot_lab/logs/rsl_rl/mydog_rough/2025-11-25_22-45-02/exported/policy.pt')
+    parser.add_argument('--model-path', type=str, default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/myrobots/mydog/mjcf/thunder2_v1.xml',
+                        help='Path to MuJoCo XML model. Available terrains: thunder2_v1.xml (complex), thunder2_v1.xml (stairs only)')
+    parser.add_argument('--policy-path', type=str, default='/home/liu/Desktop/robot_lab/logs/rsl_rl/mydog_flat/2025-11-28_00-10-07/exported/policy.pt')
     parser.add_argument('--duration', type=float, default=120.0)
     parser.add_argument('--dt', type=float, default=0.001)
     parser.add_argument('--decimation', type=int, default=5)

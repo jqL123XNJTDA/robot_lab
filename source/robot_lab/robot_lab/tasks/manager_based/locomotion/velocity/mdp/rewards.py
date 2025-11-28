@@ -656,6 +656,38 @@ def ang_vel_xy_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntit
     return reward
 
 
+def handstand_lin_vel_xy_l2(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """倒立专用 - 惩罚 YZ 方向线速度，保持静止
+
+    与普通 lin_vel 惩罚的区别：无重力系数调制，倒立时惩罚不会被缩小。
+
+    Returns:
+        torch.Tensor: YZ 方向速度的平方和 (batch_size,)
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    # 惩罚 YZ 方向的线速度
+    reward = torch.sum(torch.square(asset.data.root_lin_vel_b[:, 1:]), dim=1)
+    return reward
+
+
+def handstand_ang_vel_xyz_l2(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """倒立专用 - 惩罚 XYZ 方向角速度，保持稳定
+
+    与普通 ang_vel 惩罚的区别：无重力系数调制，倒立时惩罚不会被缩小。
+
+    Returns:
+        torch.Tensor: XYZ 方向角速度的平方和 (batch_size,)
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    # 惩罚所有方向的角速度
+    reward = torch.sum(torch.square(asset.data.root_ang_vel_b), dim=1)
+    return reward
+
+
 def undesired_contacts(env: ManagerBasedRLEnv, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     """Penalize undesired contacts as the number of violations that are above a threshold."""
     # extract the used quantities (to enable type-hinting)

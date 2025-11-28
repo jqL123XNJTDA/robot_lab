@@ -116,6 +116,19 @@ class MyDogRewardsCfg(RewardsCfg):
         },
     )
 
+    # 倒立专用速度惩罚 - 保持静止
+    handstand_lin_vel_xy_l2 = RewTerm(
+        func=mdp.handstand_lin_vel_xy_l2,
+        weight=0.0,
+        params={},
+    )
+
+    handstand_ang_vel_xyz_l2 = RewTerm(
+        func=mdp.handstand_ang_vel_xyz_l2,
+        weight=0.0,
+        params={},
+    )
+
 
 @configclass
 class MyDogRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
