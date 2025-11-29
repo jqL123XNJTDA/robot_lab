@@ -212,29 +212,53 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     obs = env.get_observations()
     timestep = 0
 
-    # ========== 接触力调试 ==========
-    # 获取接触传感器
-    contact_sensor = env.unwrapped.scene.sensors.get("contact_forces", None)
-    if contact_sensor is not None:
-        body_names = contact_sensor.body_names
-        print(f"[DEBUG] Contact sensor body names: {body_names}")
-        # 找到前腿相关的 body 索引
-        import re
-        front_leg_pattern = re.compile(r"F.*(hip|thigh|calf)", re.IGNORECASE)
-        front_leg_ids = [i for i, name in enumerate(body_names) if front_leg_pattern.match(name)]
-        front_leg_names = [body_names[i] for i in front_leg_ids]
-        print(f"[DEBUG] Front leg bodies: {front_leg_names}, ids: {front_leg_ids}")
+    # ========== 后腿关节限位监控 ==========
+    hind_joint_monitor = None
+    try:
+        robot_asset = env.unwrapped.scene["robot"]
+        hind_joint_names = ["RR_thigh_joint", "RR_calf_joint", "RL_thigh_joint", "RL_calf_joint"]
+        hind_joint_ids_tensor = robot_asset.find_joints(hind_joint_names, preserve_order=True)[0]
+        # 保持为 tensor 格式，确保在正确的设备上
+        if not isinstance(hind_joint_ids_tensor, torch.Tensor):
+            hind_joint_ids_tensor = torch.tensor(list(hind_joint_ids_tensor), dtype=torch.long)
+        hind_joint_ids = hind_joint_ids_tensor.to(env.unwrapped.device)
 
-        # base_link 索引
-        base_ids = [i for i, name in enumerate(body_names) if "base_link" in name.lower()]
-        print(f"[DEBUG] Base link ids: {base_ids}")
-    else:
-        front_leg_ids = []
-        base_ids = []
-        print("[DEBUG] No contact_forces sensor found!")
+        if robot_asset.data.soft_joint_pos_limits is None:
+            raise RuntimeError("soft_joint_pos_limits 不可用，无法监控关节限位")
+        num_envs = getattr(env.unwrapped, "num_envs", None)
+        if num_envs is None:
+            num_envs = getattr(env.unwrapped.scene, "num_envs", 1)
+        hind_joint_monitor = {
+            "asset": robot_asset,
+            "joint_ids": hind_joint_ids,  # 现在是 tensor
+            "joint_names": hind_joint_names,
+            "prev_violation": torch.zeros((num_envs, len(hind_joint_names)), dtype=torch.bool, device=env.unwrapped.device),
+            "tolerance": 0.05,  # 增加裕度到约2.86°，避免误报
+        }
+        print(f"[INFO] 后腿关节限位监控启用: {hind_joint_names}")
+        print(f"[INFO] 监控设备: {env.unwrapped.device}, 环境数: {num_envs}")
 
-    debug_print_interval = 50  # 每 50 步打印一次
-    # ================================
+        # 调试：打印所有环境的关节限位值统计
+        if robot_asset.data.soft_joint_pos_limits is not None:
+            all_limits = robot_asset.data.soft_joint_pos_limits[:, hind_joint_ids, :].detach().cpu()
+            print(f"[DEBUG] 所有环境后腿关节软限位统计:")
+            for i, name in enumerate(hind_joint_names):
+                lower_vals = all_limits[:, i, 0]
+                upper_vals = all_limits[:, i, 1]
+                print(f"  {name}:")
+                print(f"    下限: min={lower_vals.min():.3f}, max={lower_vals.max():.3f}, mean={lower_vals.mean():.3f}")
+                print(f"    上限: min={upper_vals.min():.3f}, max={upper_vals.max():.3f}, mean={upper_vals.mean():.3f}")
+                # 检查是否有异常值
+                if lower_vals.std() > 0.1 or upper_vals.std() > 0.1:
+                    abnormal_envs_lower = torch.where(torch.abs(lower_vals - lower_vals.mean()) > 0.5)[0]
+                    abnormal_envs_upper = torch.where(torch.abs(upper_vals - upper_vals.mean()) > 0.5)[0]
+                    if len(abnormal_envs_lower) > 0:
+                        print(f"    WARNING: 下限异常的环境: {abnormal_envs_lower.tolist()}")
+                    if len(abnormal_envs_upper) > 0:
+                        print(f"    WARNING: 上限异常的环境: {abnormal_envs_upper.tolist()}")
+    except Exception as exc:
+        print(f"[WARN] 后腿关节限位监控初始化失败: {exc}")
+    # ====================================
 
     # simulate environment
     while simulation_app.is_running():
@@ -247,31 +271,45 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # env stepping
             obs, _, _, _ = env.step(actions)
 
-            # ========== 打印接触力 ==========
-            if contact_sensor is not None and timestep % debug_print_interval == 0:
-                forces = contact_sensor.data.net_forces_w  # (num_envs, num_bodies, 3)
-                num_envs = forces.shape[0]
-
-                print(f"\n[Step {timestep}] Contact forces (N):")
-                for env_id in range(num_envs):
-                    print(f"  --- Env {env_id} ---")
-
-                    # 前腿接触力
-                    if len(front_leg_ids) > 0:
-                        front_forces = forces[env_id, front_leg_ids, :]
-                        front_force_norms = torch.norm(front_forces, dim=-1)
-                        for name, force_norm in zip(front_leg_names, front_force_norms):
-                            contact_status = "CONTACT!" if force_norm > 1.0 else "air"
-                            print(f"    {name}: {force_norm.item():.2f} N  [{contact_status}]")
-
-                    # base_link 接触力
-                    if len(base_ids) > 0:
-                        base_forces = forces[env_id, base_ids, :]
-                        base_force_norm = torch.norm(base_forces, dim=-1)
-                        for i, bid in enumerate(base_ids):
-                            contact_status = "CONTACT!" if base_force_norm[i] > 1.0 else "air"
-                            print(f"    base_link: {base_force_norm[i].item():.2f} N  [{contact_status}]")
-            # ================================
+            # ========== 后腿关节限位检测 ==========
+            if hind_joint_monitor is not None:
+                monitor_asset = hind_joint_monitor["asset"]
+                joint_ids = hind_joint_monitor["joint_ids"]  # 现在是 tensor
+                tolerance = hind_joint_monitor["tolerance"]
+                # 使用 tensor 索引，保持在同一设备
+                joint_pos = monitor_asset.data.joint_pos[:, joint_ids]
+                lower_limits = monitor_asset.data.soft_joint_pos_limits[:, joint_ids, 0]
+                upper_limits = monitor_asset.data.soft_joint_pos_limits[:, joint_ids, 1]
+                violation_mask = (joint_pos < (lower_limits - tolerance)) | (joint_pos > (upper_limits + tolerance))
+                prev_violation = hind_joint_monitor["prev_violation"]
+                new_violation = violation_mask & (~prev_violation)
+                if new_violation.any():
+                    # 只在需要打印时转到 CPU
+                    joint_pos_cpu = joint_pos.detach().cpu()
+                    lower_cpu = lower_limits.detach().cpu()
+                    upper_cpu = upper_limits.detach().cpu()
+                    new_violation_cpu = new_violation.detach().cpu()
+                    for env_id, joint_idx in torch.nonzero(new_violation_cpu, as_tuple=False):
+                        env_id = int(env_id.item())
+                        joint_idx = int(joint_idx.item())
+                        joint_name = hind_joint_monitor["joint_names"][joint_idx]
+                        pos_val = joint_pos_cpu[env_id, joint_idx].item()
+                        lower_val = lower_cpu[env_id, joint_idx].item()
+                        upper_val = upper_cpu[env_id, joint_idx].item()
+                        if pos_val < lower_val - tolerance:
+                            limit_type = "下限"
+                            limit_val = lower_val
+                        elif pos_val > upper_val + tolerance:
+                            limit_type = "上限"
+                            limit_val = upper_val
+                        else:
+                            continue
+                        print(
+                            f"[WARN][Step {timestep}] Env {env_id} {joint_name} 超出{limit_type} "
+                            f"(pos={pos_val:.3f} rad, limit={limit_val:.3f} rad)"
+                        )
+                hind_joint_monitor["prev_violation"] = violation_mask
+            # ====================================
 
         timestep += 1  # 始终递增 timestep 用于调试
 

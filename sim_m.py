@@ -52,12 +52,12 @@ class RobotConfig:
         # Individual joint stiffness (kp) [Nm/rad]
         # NOTE: Hip values increased for better tracking (differs from training)
         self.kp = {
-            "FR_hip_joint": 150, "FL_hip_joint": 150,
-            "RR_hip_joint": 150, "RL_hip_joint": 150,
-            "FR_thigh_joint": 150.0, "FL_thigh_joint": 150.0,
-            "RR_thigh_joint": 150.0, "RL_thigh_joint": 150.0,
-            "FR_calf_joint": 100, "FL_calf_joint": 100,
-            "RR_calf_joint": 100, "RL_calf_joint": 100,
+            "FR_hip_joint": 200, "FL_hip_joint": 200,
+            "RR_hip_joint": 200, "RL_hip_joint": 200,
+            "FR_thigh_joint": 300.0, "FL_thigh_joint": 300.0,
+            "RR_thigh_joint": 300.0, "RL_thigh_joint": 300.0,
+            "FR_calf_joint": 200, "FL_calf_joint": 200,
+            "RR_calf_joint": 200, "RL_calf_joint": 200,
             "FR_foot_joint": 1.0, "FL_foot_joint": 1.0,
             "RR_foot_joint": 1.0, "RL_foot_joint": 1.0,
         }
@@ -65,10 +65,10 @@ class RobotConfig:
         # Individual joint damping (kd) [Nm·s/rad]
         # NOTE: Hip values increased for better tracking (differs from training)
         self.kd = {
-            "FR_hip_joint": 20.0, "FL_hip_joint": 20.0,
-            "RR_hip_joint": 20.0, "RL_hip_joint": 20.0,
-            "FR_thigh_joint": 20.0, "FL_thigh_joint": 20.0,
-            "RR_thigh_joint": 20.0, "RL_thigh_joint": 20.0,
+            "FR_hip_joint": 10.0, "FL_hip_joint": 10.0,
+            "RR_hip_joint": 10.0, "RL_hip_joint": 10.0,
+            "FR_thigh_joint": 30.0, "FL_thigh_joint": 30.0,
+            "RR_thigh_joint": 30.0, "RL_thigh_joint": 30.0,
             "FR_calf_joint": 20.0, "FL_calf_joint": 20.0,
             "RR_calf_joint": 20.0, "RL_calf_joint": 20.0,
             "FR_foot_joint": 1.0, "FL_foot_joint": 1.0,
@@ -1073,7 +1073,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Mujoco deployment')
     parser.add_argument('--model-path', type=str, default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/myrobots/mydog/mjcf/thunder2_v1.xml',
                         help='Path to MuJoCo XML model. Available terrains: thunder2_v1.xml (complex), thunder2_v1.xml (stairs only)')
-    parser.add_argument('--policy-path', type=str, default='/home/liu/Desktop/robot_lab/logs/rsl_rl/mydog_flat/2025-11-28_00-10-07/exported/policy.pt')
+    parser.add_argument('--policy-path', type=str, default='/home/liu/Desktop/robot_lab/logs/rsl_rl/mydog_flat/2025-11-28_16-19-33/exported/policy.pt')
     parser.add_argument('--duration', type=float, default=120.0)
     parser.add_argument('--dt', type=float, default=0.001)
     parser.add_argument('--decimation', type=int, default=5)

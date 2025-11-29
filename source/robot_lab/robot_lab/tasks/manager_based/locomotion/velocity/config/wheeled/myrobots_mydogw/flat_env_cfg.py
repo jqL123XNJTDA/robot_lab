@@ -62,10 +62,11 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         self.rewards.contact_forces.weight = 0
 
         # 放宽 root 相关惩罚，重点关注倒立姿态
-        self.rewards.lin_vel_z_l2.weight = -0.5
-        self.rewards.ang_vel_xy_l2.weight = -0.01
+        self.rewards.lin_vel_z_l2.weight = 0
+        self.rewards.ang_vel_xy_l2.weight = 0
         self.rewards.base_height_l2.weight = 0
 
+        
         # ------------------------------Handstand Rewards------------------------------
         handstand_type = "back"  # 使用前腿支撑倒立
         if handstand_type == "front":
@@ -85,9 +86,9 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         # 高度检测改为 calf（小腿），更稳定
         self.rewards.handstand_feet_height_exp.weight = 0.5
         self.rewards.handstand_feet_height_exp.params["asset_cfg"].body_names = [air_calf_pattern]
-        self.rewards.handstand_feet_height_exp.params["target_height"] = 0.55  # 小腿目标高度
+        self.rewards.handstand_feet_height_exp.params["target_height"] = 0.6  # 小腿目标高度
 
-        self.rewards.handstand_feet_on_air.weight = 5.0
+        self.rewards.handstand_feet_on_air.weight = 1.0
         self.rewards.handstand_feet_on_air.params["sensor_cfg"].body_names = [air_foot_pattern]
         self.rewards.handstand_feet_on_air.params["threshold"] = 5.0
         self.rewards.handstand_feet_on_air.params["knee_body_names"] = knee_patterns
@@ -99,16 +100,16 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         self.rewards.handstand_feet_air_time.params["_contact_force_threshold"] = 5.0
 
         # 前腿不良接触惩罚 - 只允许前轮接触地面，惩罚前腿 hip/thigh/calf 接触地面
-        self.rewards.handstand_front_leg_undesired_contacts.weight = -10.0
+        self.rewards.handstand_front_leg_undesired_contacts.weight = -5.0
         self.rewards.handstand_front_leg_undesired_contacts.params["sensor_cfg"].body_names = ["F.*(hip|thigh|calf)"]
         self.rewards.handstand_front_leg_undesired_contacts.params["threshold"] = 5.0
 
         # 身体接触地面惩罚 - 机器人躯干(base_link)接触地面时给予惩罚
-        self.rewards.handstand_body_contact.weight = -10.0
+        self.rewards.handstand_body_contact.weight = -5.0
         self.rewards.handstand_body_contact.params["threshold"] = 10.0
 
         # 倒立专用速度惩罚 - 保持静止
-        self.rewards.handstand_lin_vel_xy_l2.weight = -2.0   # 惩罚 YZ 方向移动
+        self.rewards.handstand_lin_vel_xy_l2.weight = -3.0   # 惩罚 YZ 方向移动
         self.rewards.handstand_ang_vel_xyz_l2.weight = 0  # 惩罚旋转
         # ------------------------------Events------------------------------
         # 关闭复位随机化，保持每次 episode 初始姿态一致
