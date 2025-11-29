@@ -109,8 +109,8 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         self.rewards.handstand_body_contact.params["threshold"] = 10.0
 
         # 倒立专用速度惩罚 - 保持静止
-        self.rewards.handstand_lin_vel_xy_l2.weight = -3.0   # 惩罚 YZ 方向移动
-        self.rewards.handstand_ang_vel_xyz_l2.weight = 0  # 惩罚旋转
+        self.rewards.handstand_lin_vel_xy_l2.weight = -1.5   # 惩罚 YZ 方向移动
+        self.rewards.handstand_ang_vel_xyz_l2.weight = -1.5  # 惩罚旋转
         # ------------------------------Events------------------------------
         # 关闭复位随机化，保持每次 episode 初始姿态一致
         #self.events.randomize_reset_base = None
