@@ -70,24 +70,22 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         # ------------------------------Handstand Rewards------------------------------
         handstand_type = "back"  # 使用前腿支撑倒立
         if handstand_type == "front":
-            air_foot_pattern = "F.*_foot"      # 前轮悬空检测
-            air_calf_pattern = "F.*_calf"      # 前腿小腿高度检测
+            air_foot_pattern = "F.*_foot"      # 前轮悬空检测 + 脚高度检测
             knee_patterns = ["F.*(hip|thigh|calf)"]
             target_gravity = [-1.0, 0.0, 0.0]
         else:
-            air_foot_pattern = "R.*_foot"      # 后轮悬空检测
-            air_calf_pattern = "R.*_calf"      # 后腿小腿高度检测
+            air_foot_pattern = "R.*_foot"      # 后轮悬空检测 + 脚高度检测
             knee_patterns = ["R.*(hip|thigh|calf)"]
             target_gravity = [1.0, 0.0, 0.0]
 
         self.rewards.handstand_orientation_l2.weight = -2.0
         self.rewards.handstand_orientation_l2.params["target_gravity"] = target_gravity
 
-        # 小腿高度奖励 - 使用线性奖励，高度越高奖励越大
-        self.rewards.handstand_calf_height_linear.weight = 1.0
-        self.rewards.handstand_calf_height_linear.params["asset_cfg"].body_names = [air_calf_pattern]
-        self.rewards.handstand_calf_height_linear.params["min_height"] = 0.6  # 最小高度 0.6m
-        self.rewards.handstand_calf_height_linear.params["max_height"] = 1.0  # 最大高度 1.0m，超过则饱和
+        # 脚底高度奖励 - 使用线性奖励，脚抬得越高奖励越大
+        self.rewards.handstand_calf_height_linear.weight = 4.0
+        self.rewards.handstand_calf_height_linear.params["asset_cfg"].body_names = [air_foot_pattern]
+        self.rewards.handstand_calf_height_linear.params["min_height"] = 0.8  # 最小高度 0.8m
+        self.rewards.handstand_calf_height_linear.params["max_height"] = 1.2  # 最大高度 1.2m，超过则饱和
 
         # 关闭原来的指数型高度奖励
         self.rewards.handstand_feet_height_exp.weight = 0
@@ -97,7 +95,7 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         self.rewards.handstand_feet_on_air.params["threshold"] = 5.0
         self.rewards.handstand_feet_on_air.params["knee_body_names"] = knee_patterns
 
-        self.rewards.handstand_feet_air_time.weight =5.0  # 提高权重
+        self.rewards.handstand_feet_air_time.weight =1.0  # 提高权重
         self.rewards.handstand_feet_air_time.params["_sensor_cfg"].body_names = [air_foot_pattern]
         self.rewards.handstand_feet_air_time.params["_threshold"] = 0.3  # 降低门槛，更容易获得正奖励
         self.rewards.handstand_feet_air_time.params["_knee_body_names"] = knee_patterns

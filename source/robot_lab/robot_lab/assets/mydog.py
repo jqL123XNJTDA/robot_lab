@@ -76,7 +76,7 @@ MYDOG_CFG = ArticulationCfg(
     ),
 
     # 系统级的软限位因子（用于限制关节移动范围的软边界）
-    soft_joint_pos_limit_factor=0.95,
+    soft_joint_pos_limit_factor=0.85,
 
     # actuators: 定义哪些关节由哪些 actuator 组控制，以及各组的参数
     actuators={

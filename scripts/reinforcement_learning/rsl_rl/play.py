@@ -260,6 +260,34 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print(f"[WARN] 后腿关节限位监控初始化失败: {exc}")
     # ====================================
 
+    # ========== 后腿Calf高度监控 ==========
+    calf_height_monitor = None
+    try:
+        robot_asset = env.unwrapped.scene["robot"]
+        # 后腿小腿刚体名称
+        hind_calf_names = ["RR_calf", "RL_calf"]
+        hind_calf_ids_list = []
+        for name in hind_calf_names:
+            body_id = robot_asset.find_bodies(name)[0]
+            if isinstance(body_id, torch.Tensor):
+                hind_calf_ids_list.append(body_id.item())
+            else:
+                hind_calf_ids_list.append(int(body_id[0]))
+
+        hind_calf_ids = torch.tensor(hind_calf_ids_list, dtype=torch.long, device=env.unwrapped.device)
+
+        calf_height_monitor = {
+            "asset": robot_asset,
+            "body_ids": hind_calf_ids,
+            "body_names": hind_calf_names,
+            "print_interval": 50,  # 每50步打印一次
+            "step_counter": 0,
+        }
+        print(f"[INFO] 后腿Calf高度监控启用: {hind_calf_names}")
+    except Exception as exc:
+        print(f"[WARN] 后腿Calf高度监控初始化失败: {exc}")
+    # ====================================
+
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
@@ -309,6 +337,34 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                             f"(pos={pos_val:.3f} rad, limit={limit_val:.3f} rad)"
                         )
                 hind_joint_monitor["prev_violation"] = violation_mask
+            # ====================================
+
+            # ========== 后腿Calf高度打印 ==========
+            if calf_height_monitor is not None:
+                calf_height_monitor["step_counter"] += 1
+                if calf_height_monitor["step_counter"] % calf_height_monitor["print_interval"] == 0:
+                    monitor_asset = calf_height_monitor["asset"]
+                    body_ids = calf_height_monitor["body_ids"]
+                    body_names = calf_height_monitor["body_names"]
+
+                    # 获取小腿的世界坐标位置 (num_envs, num_calves, 3)
+                    calf_pos_w = monitor_asset.data.body_pos_w[:, body_ids, :]
+                    # 提取Z轴高度 (num_envs, num_calves)
+                    calf_heights = calf_pos_w[:, :, 2].detach().cpu()
+
+                    # 打印Env 0的高度信息
+                    env0_heights = calf_heights[0]
+                    print(f"[INFO][Step {timestep}] Env 0 后腿Calf高度:")
+                    for i, name in enumerate(body_names):
+                        print(f"  {name}: {env0_heights[i]:.3f} m")
+
+                    # 打印所有环境的统计信息
+                    mean_heights = calf_heights.mean(dim=0)  # 对所有环境求平均
+                    max_heights = calf_heights.max(dim=0).values
+                    min_heights = calf_heights.min(dim=0).values
+                    print(f"[INFO][Step {timestep}] 所有环境后腿Calf高度统计:")
+                    for i, name in enumerate(body_names):
+                        print(f"  {name}: mean={mean_heights[i]:.3f} m, min={min_heights[i]:.3f} m, max={max_heights[i]:.3f} m")
             # ====================================
 
         timestep += 1  # 始终递增 timestep 用于调试
