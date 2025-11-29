@@ -94,6 +94,17 @@ class MyDogRewardsCfg(RewardsCfg):
         },
     )
 
+    # 后腿小腿高度奖励（线性） - 高度越高奖励越大
+    handstand_calf_height_linear = RewTerm(
+        func=mdp.handstand_calf_height_linear,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["R.*_calf"]),
+            "min_height": 0.6,  # 最小高度（m）
+            "max_height": 1.0,  # 最大高度（m），超过此高度奖励饱和
+        },
+    )
+
     # 前腿不良接触惩罚 - 只允许前轮(F.*_foot)接触地面，惩罚前腿hip/thigh/calf接触
     # 使用 handstand_undesired_contacts (无重力系数调制，倒立时惩罚不会被缩小)
     handstand_front_leg_undesired_contacts = RewTerm(

@@ -760,6 +760,57 @@ def handstand_feet_height_exp(
     return reward
 
 
+def handstand_calf_height_linear(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    min_height: float = 0.0,
+    max_height: float = 1.0,
+) -> torch.Tensor:
+    """奖励后腿小腿高度 - 高度越高奖励越大（线性）
+
+    Reward the robot for lifting its hind calves higher using linear reward.
+    Unlike exponential kernel, this provides continuous reward proportional to height.
+
+    Args:
+        env: ManagerBasedRLEnv 实例
+        asset_cfg: 机器人场景实体配置 (必须包含 body_ids 指定小腿刚体)
+        min_height: 最小高度 [m] - 低于此高度奖励为0
+        max_height: 最大高度 [m] - 高于此高度奖励饱和为1
+
+    Returns:
+        torch.Tensor: 奖励值 (batch_size,) - 高度在 [min_height, max_height] 范围内线性增长
+
+    公式:
+        reward = mean(clamp((height - min_height) / (max_height - min_height), 0, 1))
+        归一化到 [0, 1] 范围，对所有指定的小腿取平均
+    """
+    # 提取机器人资产
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    # 获取小腿的世界坐标位置 (batch_size, num_calves, 3)
+    calf_pos_w = asset.data.body_pos_w[:, asset_cfg.body_ids, :]
+
+    # 提取Z轴高度 (batch_size, num_calves)
+    calf_height = calf_pos_w[:, :, 2]
+
+    # 归一化到 [0, 1] 范围
+    height_range = max_height - min_height
+    if height_range <= 0.0:
+        # 保护配置错误导致除零或反转区间
+        raise ValueError(
+            f"handstand_calf_height_linear 期望 max_height({max_height}) > min_height({min_height})."
+        )
+    normalized_height = (calf_height - min_height) / height_range
+
+    # 限制在 [0, 1] 范围内
+    clamped_height = torch.clamp(normalized_height, 0.0, 1.0)
+
+    # 对所有小腿取平均作为最终奖励 (batch_size,)
+    reward = torch.mean(clamped_height, dim=1)
+
+    return reward
+
+
 def handstand_feet_on_air(
     env: ManagerBasedRLEnv,
     threshold: float,

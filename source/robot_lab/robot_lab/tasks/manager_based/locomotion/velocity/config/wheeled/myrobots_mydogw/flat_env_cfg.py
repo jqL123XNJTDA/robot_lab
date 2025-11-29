@@ -80,13 +80,17 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
             knee_patterns = ["R.*(hip|thigh|calf)"]
             target_gravity = [1.0, 0.0, 0.0]
 
-        self.rewards.handstand_orientation_l2.weight = -5.0
+        self.rewards.handstand_orientation_l2.weight = -2.0
         self.rewards.handstand_orientation_l2.params["target_gravity"] = target_gravity
 
-        # 高度检测改为 calf（小腿），更稳定
-        self.rewards.handstand_feet_height_exp.weight = 0.5
-        self.rewards.handstand_feet_height_exp.params["asset_cfg"].body_names = [air_calf_pattern]
-        self.rewards.handstand_feet_height_exp.params["target_height"] = 0.6  # 小腿目标高度
+        # 小腿高度奖励 - 使用线性奖励，高度越高奖励越大
+        self.rewards.handstand_calf_height_linear.weight = 1.0
+        self.rewards.handstand_calf_height_linear.params["asset_cfg"].body_names = [air_calf_pattern]
+        self.rewards.handstand_calf_height_linear.params["min_height"] = 0.6  # 最小高度 0.6m
+        self.rewards.handstand_calf_height_linear.params["max_height"] = 1.0  # 最大高度 1.0m，超过则饱和
+
+        # 关闭原来的指数型高度奖励
+        self.rewards.handstand_feet_height_exp.weight = 0
 
         self.rewards.handstand_feet_on_air.weight = 1.0
         self.rewards.handstand_feet_on_air.params["sensor_cfg"].body_names = [air_foot_pattern]

@@ -1073,7 +1073,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Mujoco deployment')
     parser.add_argument('--model-path', type=str, default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/myrobots/mydog/mjcf/thunder2_v1.xml',
                         help='Path to MuJoCo XML model. Available terrains: thunder2_v1.xml (complex), thunder2_v1.xml (stairs only)')
-    parser.add_argument('--policy-path', type=str, default='/home/liu/Desktop/robot_lab/logs/rsl_rl/mydog_flat/2025-11-28_16-19-33/exported/policy.pt')
+    parser.add_argument('--policy-path', type=str, default='/home/liu/Desktop/robot_lab/logs/rsl_rl/mydog_flat/2025-11-29_00-59-31/exported/policy.pt')
     parser.add_argument('--duration', type=float, default=120.0)
     parser.add_argument('--dt', type=float, default=0.001)
     parser.add_argument('--decimation', type=int, default=5)
