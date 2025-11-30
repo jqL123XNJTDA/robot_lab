@@ -78,14 +78,14 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
             knee_patterns = ["R.*(hip|thigh|calf)"]
             target_gravity = [1.0, 0.0, 0.0]
 
-        self.rewards.handstand_orientation_l2.weight = -2.0
+        self.rewards.handstand_orientation_l2.weight = -1.0
         self.rewards.handstand_orientation_l2.params["target_gravity"] = target_gravity
 
         # 脚底高度奖励 - 使用线性奖励，脚抬得越高奖励越大
         self.rewards.handstand_calf_height_linear.weight = 4.0
         self.rewards.handstand_calf_height_linear.params["asset_cfg"].body_names = [air_foot_pattern]
         self.rewards.handstand_calf_height_linear.params["min_height"] = 0.8  # 最小高度 0.8m
-        self.rewards.handstand_calf_height_linear.params["max_height"] = 1.2  # 最大高度 1.2m，超过则饱和
+        self.rewards.handstand_calf_height_linear.params["max_height"] = 1.0 # 最大高度 1.0m，超过则饱和
 
         # 关闭原来的指数型高度奖励
         self.rewards.handstand_feet_height_exp.weight = 0
