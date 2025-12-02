@@ -76,3 +76,21 @@ WARNING: File size over 2GB is not supported. File: 'source/robot_lab/data/Robot
 Mon Nov 24 17:59:33 2025
 WARNING: File size over 2GB is not supported. File: 'source/robot_lab/data/Robots/myrobots/mydog/mjcf/'
 
+Tue Dec  2 22:56:09 2025
+WARNING: Nan, Inf or huge value in QACC at DOF 1. The simulation is unstable. Time = 10.3760.
+
+Wed Dec  3 00:05:51 2025
+WARNING: Nan, Inf or huge value in QACC at DOF 1. The simulation is unstable. Time = 10.3760.
+
+Wed Dec  3 00:07:02 2025
+WARNING: Nan, Inf or huge value in QACC at DOF 1. The simulation is unstable. Time = 10.3760.
+
+Wed Dec  3 00:09:37 2025
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 6.8280.
+
+Wed Dec  3 00:11:08 2025
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 6.8280.
+
+Wed Dec  3 00:21:26 2025
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 6.8280.
+

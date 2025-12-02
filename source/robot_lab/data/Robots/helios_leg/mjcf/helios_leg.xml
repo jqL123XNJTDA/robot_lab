@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Helios Leg (LW-360 Gen2V1) - 双足轮腿机器人 MJCF 模型
+     基于 URDF 转换，用于 MuJoCo 仿真
+
+     关节结构：
+     - 4个腿部关节（位置控制）：right_thigh, right_calf, left_thigh, left_calf
+     - 2个轮子关节（速度控制）：right_foot, left_foot
+
+     关节限位（来自URDF）：
+     - right_thigh_joint: [0.7, 2.7] rad, axis: (0, -1, 0)
+     - right_calf_joint: [-2.1, 0.9] rad, axis: (0, 1, 0)
+     - left_thigh_joint: [-2.7, -0.7] rad, axis: (0, 1, 0)
+     - left_calf_joint: [-0.9, 2.1] rad, axis: (0, -1, 0)
+     - foot_joint: continuous (轮子，无限旋转)
+-->
+<mujoco model="helios_leg">
+  <compiler angle="radian" meshdir="../meshes/" eulerseq="zyx"/>
+  <option timestep='0.001' iterations='100' solver='Newton' gravity='0 0 -9.81'>
+    <flag frictionloss="enable" sensor="enable"/>
+  </option>
+  <visual>
+    <quality shadowsize="4096"/>
+    <map znear="0.05"/>
+  </visual>
+
+  <default>
+    <joint limited="true"/>
+    <motor ctrllimited="true"/>
+    <geom condim="4" contype="1" conaffinity="15" solref="0.001 2" friction="0.9 0.2 0.2"/>
+    <equality solref="0.001 2"/>
+    <default class="leg_joint_param">
+      <joint damping="0.01" frictionloss="0.01" armature="0.01"/>
+    </default>
+  </default>
+
+  <statistic meansize="0.1" extent="0.8" center="0 0 0"/>
+
+  <asset>
+    <mesh name="base_link" file="base_link.STL"/>
+    <mesh name="right_thigh_link" file="right_thigh_link.STL"/>
+    <mesh name="right_calf_link" file="right_calf_link.STL"/>
+    <mesh name="right_foot_link" file="right_foot_link.STL"/>
+    <mesh name="left_thigh_link" file="left_thigh_link.STL"/>
+    <mesh name="left_calf_link" file="left_calf_link.STL"/>
+    <mesh name="left_foot_link" file="left_foot_link.STL"/>
+    <material name="matplane" reflectance="0.3" texture="texplane" texrepeat="1 1" texuniform="true"/>
+    <material name="matgeom" texture="texgeom" texuniform="true" rgba="0.8 0.6 .4 1"/>
+    <texture name="texplane" type="2d" builtin="checker" rgb1=".2 .3 .4" rgb2=".1 0.15 0.2" width="512" height="512" mark="cross" markrgb=".8 .8 .8"/>
+    <texture name="texgeom" type="cube" builtin="flat" mark="cross" width="127" height="1278" rgb1="0.8 0.6 0.4" rgb2="0.8 0.6 0.4" markrgb="1 1 1" random="0.01"/>
+    <texture type="skybox" builtin="gradient" rgb1="1 1 1" rgb2=".6 .8 1" width="256" height="256"/>
+  </asset>
+
+  <worldbody>
+    <light directional="true" diffuse=".4 .4 .4" specular="0.1 0.1 0.1" pos="0 0 5.0" dir="0 0 -1" castshadow="false"/>
+    <light directional="true" diffuse=".6 .6 .6" specular="0.2 0.2 0.2" pos="0 0 4" dir="0 0 -1"/>
+    <geom name="ground" type="plane" size="0 0 1" pos="0.001 0 0" quat="1 0 0 0" material="matplane" condim="1" conaffinity='15'/>
+
+    <!-- Base link - 机器人躯干 -->
+    <body name="base_link" pos='0 0 0.45'>
+      <site name='imu' size='0.01' pos='0.0 0 0.0' quat='1 0 0 0'/>
+      <!-- 惯性参数来自URDF -->
+      <inertial pos="-0.0383947 -0.0008525 -0.0655415" mass="7.3247159"
+                fullinertia="0.1185013 0.1507238 0.2153489 0.0000558 0.0037814 0.0004387"/>
+      <joint name="floating_base_joint" type="free" limited='false'/>
+      <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.79216 0.81961 0.93333 1" mesh="base_link"/>
+      <!-- 简化碰撞体 (group=3 隐藏显示, contype=1 启用碰撞) -->
+      <geom name="base_collision" size="0.15 0.12 0.08" pos="-0.04 0 -0.065" type="box" group="3" contype="1" conaffinity="15"/>
+
+      <!-- ===== 右腿 ===== -->
+      <!-- right_thigh_link -->
+      <body name="right_thigh_link" pos="-0.0337728 -0.1646147 -0.0275">
+        <inertial pos="-0.0137451 0.0110123 0.0984246" mass="0.610696"
+                  fullinertia="0.0035478 0.0037918 0.0003382 -0.0000036 0.0003795 0.0000241"/>
+        <!-- right_thigh_joint: 限位[0.7, 2.7], 轴(0,-1,0) -->
+        <joint name="right_thigh_joint" pos="0 0 0" axis="0 -1 0" limited="true"
+               range="0.7 2.7" actuatorfrcrange="-40 40" class="leg_joint_param"/>
+        <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.89804 0.91765 0.92941 1" mesh="right_thigh_link"/>
+        <!-- 简化碰撞体 - 大腿 (group=3 隐藏显示, contype=1 启用碰撞) -->
+        <geom name="right_thigh_collision" size="0.03 0.03 0.1" pos="-0.014 0.011 0.098" type="box" group="3" contype="1" conaffinity="15"/>
+
+        <!-- right_calf_link -->
+        <body name="right_calf_link" pos="-0.0331636 -0.0185 0.2124269">
+          <inertial pos="-0.083871 0.0078304 0.047461" mass="0.3123662"
+                    fullinertia="0.0009584 0.0036658 0.0027379 -0.0000480 0.0014136 0.0000271"/>
+          <!-- right_calf_joint: 限位[-2.1, 0.9], 轴(0,1,0) -->
+          <joint name="right_calf_joint" pos="0 0 0" axis="0 1 0" limited="true"
+                 range="-2.1 0.9" actuatorfrcrange="-40 40" class="leg_joint_param"/>
+          <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.89804 0.91765 0.92941 1" mesh="right_calf_link"/>
+          <!-- 简化碰撞体 - 小腿 (group=3 隐藏显示, contype=1 启用碰撞) -->
+          <geom name="right_calf_collision" size="0.11 0.025 0.03" pos="-0.084 0.008 0.047" type="box" group="3" contype="1" conaffinity="15"/>
+
+          <!-- right_foot_link (轮子) -->
+          <body name="right_foot_link" pos="-0.2264639 -0.0392 0.1236046">
+            <inertial pos="-0.0000015 0.0197779 -0.0000114" mass="1.1015508"
+                      fullinertia="0.0008532 0.0013495 0.0008535 0 0.0000002 0"/>
+            <!-- right_foot_joint: 轮子，无限旋转，轴(0,1,0) -->
+            <joint name="right_foot_joint" type="hinge" pos="0 0 0" axis="0 1 0"
+                   limited="false" actuatorfrcrange="-40 40" class="leg_joint_param"/>
+            <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.90196 0.92157 0.92157 1" mesh="right_foot_link"/>
+            <!-- 轮子碰撞体 - 圆柱 (group=3 隐藏显示, contype=1 启用碰撞) -->
+            <geom name="right_wheel_collision" size="0.085 0.03" pos="0 0.0198 0" quat="0.707107 0.707107 0 0" type="cylinder" group="3" contype="1" conaffinity="15"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- ===== 左腿 ===== -->
+      <!-- left_thigh_link -->
+      <body name="left_thigh_link" pos="-0.0337728 0.1653883 -0.0275">
+        <inertial pos="-0.012613 -0.0050895 0.09005" mass="0.29712"
+                  fullinertia="0.0018968 0.0020314 0.0001675 0.0000084 0.0002054 -0.0000748"/>
+        <!-- left_thigh_joint: 限位[-2.7, -0.7], 轴(0,1,0) -->
+        <joint name="left_thigh_joint" pos="0 0 0" axis="0 1 0" limited="true"
+               range="-2.7 -0.7" actuatorfrcrange="-40 40" class="leg_joint_param"/>
+        <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.89804 0.91765 0.92941 1" mesh="left_thigh_link"/>
+        <!-- 简化碰撞体 - 大腿 (group=3 隐藏显示, contype=1 启用碰撞) -->
+        <geom name="left_thigh_collision" size="0.03 0.03 0.09" pos="-0.013 -0.005 0.09" type="box" group="3" contype="1" conaffinity="15"/>
+
+        <!-- left_calf_link -->
+        <body name="left_calf_link" pos="-0.0331636 0.0175 0.2124269">
+          <inertial pos="-0.089546 -0.006239 0.050672" mass="0.29257"
+                    fullinertia="0.0008990 0.0034662 0.0025774 0.0000063 0.0013295 -0.0000035"/>
+          <!-- left_calf_joint: 限位[-0.9, 2.1], 轴(0,-1,0) -->
+          <joint name="left_calf_joint" pos="0 0 0" axis="0 -1 0" limited="true"
+                 range="-0.9 2.1" actuatorfrcrange="-40 40" class="leg_joint_param"/>
+          <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="1 1 1 1" mesh="left_calf_link"/>
+          <!-- 简化碰撞体 - 小腿 (group=3 隐藏显示, contype=1 启用碰撞) -->
+          <geom name="left_calf_collision" size="0.11 0.025 0.03" pos="-0.090 -0.006 0.051" type="box" group="3" contype="1" conaffinity="15"/>
+
+          <!-- left_foot_link (轮子) -->
+          <body name="left_foot_link" pos="-0.2264639 0.0392 0.1236046">
+            <inertial pos="0.0000087 -0.0197779 0.0000074" mass="1.1015508"
+                      fullinertia="0.0008533 0.0013495 0.0008535 0 0.0000002 0"/>
+            <!-- left_foot_joint: 轮子，无限旋转，轴(0,-1,0) -->
+            <joint name="left_foot_joint" type="hinge" pos="0 0 0" axis="0 -1 0"
+                   limited="false" actuatorfrcrange="-40 40" class="leg_joint_param"/>
+            <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.89804 0.91765 0.92941 1" mesh="left_foot_link"/>
+            <!-- 轮子碰撞体 - 圆柱 (group=3 隐藏显示, contype=1 启用碰撞) -->
+            <geom name="left_wheel_collision" size="0.085 0.03" pos="0 -0.0198 0" quat="0.707107 0.707107 0 0" type="cylinder" group="3" contype="1" conaffinity="15"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- 执行器定义 - 力矩控制 -->
+  <actuator>
+    <!-- 腿部关节 - 40Nm (来自URDF effort限制) -->
+    <motor name="right_thigh_joint" joint="right_thigh_joint" gear="1" ctrllimited="true" ctrlrange="-40 40"/>
+    <motor name="right_calf_joint" joint="right_calf_joint" gear="1" ctrllimited="true" ctrlrange="-40 40"/>
+    <motor name="left_thigh_joint" joint="left_thigh_joint" gear="1" ctrllimited="true" ctrlrange="-40 40"/>
+    <motor name="left_calf_joint" joint="left_calf_joint" gear="1" ctrllimited="true" ctrlrange="-40 40"/>
+
+    <!-- 轮子关节 - 40Nm -->
+    <motor name="right_foot_joint" joint="right_foot_joint" gear="1" ctrllimited="true" ctrlrange="-40 40"/>
+    <motor name="left_foot_joint" joint="left_foot_joint" gear="1" ctrllimited="true" ctrlrange="-40 40"/>
+  </actuator>
+
+  <!-- 传感器 -->
+  <sensor>
+    <framequat     name='orientation' objtype='site' noise='0.001' objname='imu'/>
+    <framepos      name='position' objtype='site' noise='0.001' objname='imu'/>
+    <gyro          name='angular-velocity'    site='imu' noise='0.005' cutoff='34.9'/>
+    <velocimeter   name='linear-velocity'     site='imu' noise='0.001' cutoff='30'/>
+    <accelerometer name='linear-acceleration' site='imu' noise='0.005' cutoff='157'/>
+    <magnetometer  name='magnetometer'        site='imu'/>
+  </sensor>
+</mujoco>

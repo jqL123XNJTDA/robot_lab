@@ -243,10 +243,75 @@ class MyEnvCfg(BaseEnvCfg):
 - **MJCF**：`data/Robots/myrobots/mydog/mjcf/thunder2_v1.xml`
 - **任务配置**：`config/wheeled/myrobots_mydogw/rough_env_cfg.py`
   - 混合动作空间：腿部位置控制，轮子速度控制
-  - 特殊观测：排除轮子位置（无限旋转）
+  - 特殊观测：轮子位置置为0（无限旋转）
   - 轮子特定奖励和约束
 - **当前分支**：`feature/mydog`
 - **最近训练**：`logs/rsl_rl/mydog_rough/` 和 `mydog_flat/`
+
+## 策略输入输出维度规格
+
+### MyDog (四足轮腿机器人)
+
+**观测维度：57维**
+
+| 索引 | 观测项 | 维度 | 说明 |
+|------|--------|------|------|
+| 0-2 | `base_ang_vel` | 3 | 基座角速度 [wx, wy, wz] |
+| 3-5 | `projected_gravity` | 3 | 投影重力 [gx, gy, gz] |
+| 6-8 | `velocity_commands` | 3 | 速度命令 [vx, vy, wz] |
+| 9-24 | `joint_pos` | 16 | 关节位置（轮子位置=0） |
+| 25-40 | `joint_vel` | 16 | 关节速度 |
+| 41-56 | `actions` | 16 | 上一步动作 |
+
+**关节顺序 (16维)**：
+```
+[FR_hip, FR_thigh, FR_calf, FL_hip, FL_thigh, FL_calf,
+ RR_hip, RR_thigh, RR_calf, RL_hip, RL_thigh, RL_calf,
+ FR_foot, FL_foot, RR_foot, RL_foot]
+```
+
+**动作维度：16维**
+- 腿部位置控制 (12维)：`[FR_hip, FR_thigh, FR_calf, FL_hip, FL_thigh, FL_calf, RR_hip, RR_thigh, RR_calf, RL_hip, RL_thigh, RL_calf]`
+- 轮子速度控制 (4维)：`[FR_foot_vel, FL_foot_vel, RR_foot_vel, RL_foot_vel]`
+
+### Helios Leg (双足轮腿机器人)
+
+**观测维度：27维**
+
+| 索引 | 观测项 | 维度 | 说明 |
+|------|--------|------|------|
+| 0-2 | `base_ang_vel` | 3 | 基座角速度 [wx, wy, wz] |
+| 3-5 | `projected_gravity` | 3 | 投影重力 [gx, gy, gz] |
+| 6-8 | `velocity_commands` | 3 | 速度命令 [vx, vy, wz] |
+| 9-14 | `joint_pos` | 6 | 关节位置（轮子位置=0） |
+| 15-20 | `joint_vel` | 6 | 关节速度 |
+| 21-26 | `actions` | 6 | 上一步动作 |
+
+**关节顺序 (6维)**：
+```
+[right_thigh, right_calf, left_thigh, left_calf, right_foot, left_foot]
+```
+
+**动作维度：6维**
+- 腿部位置控制 (4维)：`[right_thigh, right_calf, left_thigh, left_calf]`
+- 轮子速度控制 (2维)：`[right_foot_vel, left_foot_vel]`
+
+### 检查策略维度工具
+
+```bash
+# 自动检测策略输入输出维度
+python check_policy.py <policy_path>
+
+# 指定观测维度检测
+python check_policy.py <policy_path> --obs_dim 57
+```
+
+### 注意事项
+
+1. **`joint_pos` 不排除轮子维度**：`joint_pos_rel_without_wheel` 函数将轮子位置设为0，但维度保留
+2. **`base_lin_vel` 被禁用**：轮腿机器人配置中设为 None
+3. **`height_scan` 被禁用**：Flat 环境中设为 None
+4. **关节顺序**：由 `joint_names` 列表定义，按声明顺序拼接
 
 ## 构建、测试与开发命令
 
