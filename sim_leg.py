@@ -39,22 +39,43 @@ import torch
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from pynput import keyboard as pynput_keyboard
+import threading
+import time
 
 # ============================================================================
 # DOF Configuration - Helios Leg joint index mapping
 # ============================================================================
-# MuJoCo joint velocity indices (qvel)
-# Order: right_thigh, right_calf, left_thigh, left_calf, right_foot, left_foot
-dof_vel = [6, 7, 8, 9, 10, 11]
+# MuJoCo 中关节按 XML body 嵌套顺序排列:
+#   qpos[0:7]  = floating_base (pos xyz + quat wxyz)
+#   qpos[7]    = right_thigh_joint
+#   qpos[8]    = right_calf_joint
+#   qpos[9]    = right_foot_joint (轮子)
+#   qpos[10]   = left_thigh_joint
+#   qpos[11]   = left_calf_joint
+#   qpos[12]   = left_foot_joint (轮子)
+#
+# 代码期望的顺序 (与 actuator 和 joint_names 一致):
+#   [0] right_thigh, [1] right_calf, [2] left_thigh, [3] left_calf,
+#   [4] right_foot, [5] left_foot
 
-# MuJoCo joint position indices (qpos)
-# Order: right_thigh, right_calf, left_thigh, left_calf, right_foot, left_foot
-dof_ids = [7, 8, 9, 10, 11, 12]
+# MuJoCo joint position indices (qpos) - 重新映射到期望顺序
+# 期望顺序: right_thigh, right_calf, left_thigh, left_calf, right_foot, left_foot
+dof_ids = [7, 8, 10, 11, 9, 12]
+
+# MuJoCo joint velocity indices (qvel) - qvel 索引 = qpos 索引 - 1 (因为 free joint 有 7 qpos 但 6 qvel)
+# qvel[0:6]  = floating_base (vel xyz + ang_vel xyz)
+# qvel[6]    = right_thigh_joint
+# qvel[7]    = right_calf_joint
+# qvel[8]    = right_foot_joint
+# qvel[9]    = left_thigh_joint
+# qvel[10]   = left_calf_joint
+# qvel[11]   = left_foot_joint
+dof_vel = [6, 7, 9, 10, 8, 11]
 
 
 class SimConfig:
     """Simulation configuration"""
-    def __init__(self, dt=0.001, decimation=20, sim_duration=60.0):
+    def __init__(self, dt=0.005, decimation=4, sim_duration=60.0):
         self.sim_duration = sim_duration  # Simulation duration [s]
         self.dt = dt                      # Physics timestep [s]
         self.decimation = decimation      # Control frequency decimation
@@ -72,8 +93,8 @@ class RobotConfig:
 
         # PD controller stiffness Kp [Nm/rad]
         self.kp = {
-            "right_thigh_joint": 80.0, "left_thigh_joint": 80.0,
-            "right_calf_joint": 80.0, "left_calf_joint": 80.0,
+            "right_thigh_joint": 30.0, "left_thigh_joint": 30.0,
+            "right_calf_joint": 30.0, "left_calf_joint": 30.0,
             "right_foot_joint": 1.0, "left_foot_joint": 1.0,  # Wheels use velocity control
         }
 
@@ -81,7 +102,7 @@ class RobotConfig:
         self.kd = {
             "right_thigh_joint": 4.0, "left_thigh_joint": 4.0,
             "right_calf_joint": 4.0, "left_calf_joint": 4.0,
-            "right_foot_joint": 2.0, "left_foot_joint": 2.0,
+            "right_foot_joint": 1.0, "left_foot_joint": 1.0,
         }
 
         # Integral gain Ki [Nm/(rad*s)]
@@ -106,11 +127,12 @@ class RobotConfig:
         }
 
         # Action scaling (must match training config!)
-        self.leg_scale = 0.25        # Leg joints
+        # 关节动作缩放需分别对齐 Isaac Lab 中的大腿/小腿配置
+        self.leg_scale = np.array([0.125, 0.25, 0.125, 0.25], dtype=np.float32)
         self.wheel_scale = 5.0       # Wheel joints
 
         # Initial height [m]
-        self.init_height = 0.2
+        self.init_height = 0.45
 
         # Convert to arrays (ordered by joint_names)
         self.kp_array = np.array([self.kp[name] for name in self.joint_names])
@@ -144,7 +166,7 @@ cfg = Config()
 # right_thigh: [0.7, 2.7], right_calf: [-2.1, 0.9]
 # left_thigh: [-2.7, -0.7], left_calf: [-0.9, 2.1]
 default_joint_angles = {
-    "right_thigh_joint": 1.7,    # Thigh initial angle
+    "right_thigh_joint":1.7,    # Thigh initial angle
     "right_calf_joint": -1.2,    # Calf initial angle
     "left_thigh_joint": -1.7,    # Thigh initial angle
     "left_calf_joint": 1.2,      # Calf initial angle
@@ -711,7 +733,24 @@ def plot_joint_data(plot_data):
     plt.show()
 
 
-def run_mujoco(policy, mujoco_model_path, sim_duration, dt, decimation, debug=False, plot=False, keyboard_control=False):
+def wait_for_manual_start(viewer):
+    """在执行仿真前保持 MuJoCo 画面静止，方便检查初始姿态"""
+    resume_event = threading.Event()
+
+    def _wait_input():
+        input("\n[PAUSE] MuJoCo 已暂停，按回车继续仿真...\n")
+        resume_event.set()
+
+    threading.Thread(target=_wait_input, daemon=True).start()
+    print("\n[PAUSE] 画面已冻结，可观察机器人初始姿态，按终端回车恢复仿真。")
+    while not resume_event.is_set():
+        viewer.render()
+        time.sleep(0.01)
+    print("[PAUSE] 已收到输入，开始仿真。\n")
+
+
+def run_mujoco(policy, mujoco_model_path, sim_duration, dt, decimation,
+               debug=False, plot=False, keyboard_control=False, pause_on_start=False):
     """Run MuJoCo simulation"""
     global pd_tuner
 
@@ -754,7 +793,7 @@ def run_mujoco(policy, mujoco_model_path, sim_duration, dt, decimation, debug=Fa
         print("="*70 + "\n")
 
     # Set initial state
-    data.qpos[:3] = [0, 0, cfg.robot_config.init_height]
+    data.qpos[:3] = [0, 0, 0.31]
     data.qpos[3:7] = [1, 0, 0, 0]  # Quaternion [w, x, y, z]
     data.qpos[dof_ids] = default_angle.copy()
     data.qvel[:] = 0.0
@@ -775,6 +814,11 @@ def run_mujoco(policy, mujoco_model_path, sim_duration, dt, decimation, debug=Fa
             'errors': [[] for _ in range(6)],
             'torques': [[] for _ in range(6)]
         }
+
+    if pause_on_start:
+        mujoco.mj_step(model, data)
+        viewer.render()
+        wait_for_manual_start(viewer)
 
     steps = int(sim_duration / dt)
     try:
@@ -859,10 +903,8 @@ def run_mujoco(policy, mujoco_model_path, sim_duration, dt, decimation, debug=Fa
                     plot_data['actuals'][i].append(dq[i])
                     plot_data['errors'][i].append(errors[i])
                     plot_data['torques'][i].append(tau[i])
-
             # Apply torques
             data.ctrl[:] = tau
-            data.ctrl[:] = 0.0  # No control for other joints
             mujoco.mj_step(model, data)
 
             # 检测仿真不稳定
@@ -894,20 +936,21 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Helios Leg MuJoCo Deployment')
     parser.add_argument('--model-path', type=str,
-                        default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/helios_leg/mjcf/helios_leg.xml',
+                        default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/helios_leg/mjcf/LW360.xml',
                         help='Path to MuJoCo XML model')
     parser.add_argument('--policy-path', type=str,
                         default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_flat/2025-12-01_02-58-42/exported/policy.pt',
                         help='Path to trained policy (.pt)')
     parser.add_argument('--duration', type=float, default=120.0, help='Simulation duration [s]')
     parser.add_argument('--dt', type=float, default=0.001, help='Physics timestep [s]')
-    parser.add_argument('--decimation', type=int, default=20, help='Control decimation')
+    parser.add_argument('--decimation', type=int, default=5, help='Control decimation')
     parser.add_argument('--debug', action='store_true', help='Print debug info')
     parser.add_argument('--vx', type=float, default=0.0, help='Forward velocity command [m/s]')
     parser.add_argument('--vy', type=float, default=0.0, help='Lateral velocity command [m/s]')
     parser.add_argument('--vyaw', type=float, default=0.0, help='Yaw velocity command [rad/s]')
     parser.add_argument('--plot', action='store_true', help='Generate plots after simulation')
     parser.add_argument('--keyboard', action='store_true', help='Enable keyboard control')
+    parser.add_argument('--pause-on-start', action='store_true', help='导入后先暂停渲染，等待手动继续')
 
     args = parser.parse_args()
     args.keyboard = True  # Enable keyboard control by default
@@ -945,4 +988,5 @@ if __name__ == '__main__':
 
     print()
     run_mujoco(policy, args.model_path, args.duration, args.dt, args.decimation,
-               debug=args.debug, plot=args.plot, keyboard_control=args.keyboard)
+               debug=args.debug, plot=args.plot, keyboard_control=args.keyboard,
+               pause_on_start=args.pause_on_start)
