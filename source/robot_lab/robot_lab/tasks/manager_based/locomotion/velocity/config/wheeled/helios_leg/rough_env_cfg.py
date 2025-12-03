@@ -201,10 +201,10 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # XY方向角速度惩罚（抑制翻滚/俯仰晃动）
         self.rewards.ang_vel_xy_l2.weight = -0.05
         # 平坦姿态惩罚（鼓励保持水平）
-        self.rewards.flat_orientation_l2.weight = -0.5
+        self.rewards.flat_orientation_l2.weight = -1.5
         # 基座高度惩罚（维持目标站立高度）
-        self.rewards.base_height_l2.weight = 0.0
-        self.rewards.base_height_l2.params["target_height"] = 0.4  # 目标高度0.4m
+        self.rewards.base_height_l2.weight = -1
+        self.rewards.base_height_l2.params["target_height"] = 0.32  # 目标高度0.32m
         self.rewards.base_height_l2.params["asset_cfg"].body_names = [self.base_link_name]
         # 基座线加速度惩罚
         self.rewards.body_lin_acc_l2.weight = 0
@@ -261,7 +261,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # === 接触传感器相关 ===
         # 非期望接触惩罚（除轮子外的接触）
-        self.rewards.undesired_contacts.weight = -5.0
+        self.rewards.undesired_contacts.weight = -10.0
         self.rewards.undesired_contacts.params["sensor_cfg"].body_names = [f"^(?!.*{self.foot_link_name}).*"]
         # 接触力惩罚（轮子接触力过大）
         self.rewards.contact_forces.weight = 0
@@ -283,7 +283,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.feet_air_time.params["threshold"] = 0.5
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = [self.foot_link_name]
         # 足部接触奖励
-        self.rewards.feet_contact.weight = 0
+        self.rewards.feet_contact.weight = 0.5
         self.rewards.feet_contact.params["sensor_cfg"].body_names = [self.foot_link_name]
         # 无命令时足部接触奖励（静止时保持接地）
         self.rewards.feet_contact_without_cmd.weight = 0.0

@@ -44,5 +44,5 @@ class HeliosLegFlatPPORunnerCfg(HeliosLegRoughPPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.max_iterations = 5000
+        self.max_iterations = 20000
         self.experiment_name = "helios_leg_flat"

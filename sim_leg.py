@@ -939,7 +939,7 @@ if __name__ == '__main__':
                         default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/helios_leg/mjcf/LW360.xml',
                         help='Path to MuJoCo XML model')
     parser.add_argument('--policy-path', type=str,
-                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_flat/2025-12-01_02-58-42/exported/policy.pt',
+                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_flat/2025-12-03_17-51-54/exported/policy.pt',
                         help='Path to trained policy (.pt)')
     parser.add_argument('--duration', type=float, default=120.0, help='Simulation duration [s]')
     parser.add_argument('--dt', type=float, default=0.001, help='Physics timestep [s]')
