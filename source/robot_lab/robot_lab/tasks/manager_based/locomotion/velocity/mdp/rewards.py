@@ -52,6 +52,22 @@ def track_lin_vel_y_exp(
     return reward
 
 
+def track_lin_vel_x_exp(
+    env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """只跟踪X方向线速度命令的奖励（使用指数核）。
+
+    适用于只能前后移动的双轮腿机器人（无髋关节，不能侧向移动）。
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject = env.scene[asset_cfg.name]
+    # 只计算X方向的速度误差（command[:, 0] 是 lin_vel_x）
+    lin_vel_x_error = torch.square(env.command_manager.get_command(command_name)[:, 0] - asset.data.root_lin_vel_b[:, 0])
+    reward = torch.exp(-lin_vel_x_error / std**2)
+    reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
+    return reward
+
+
 def track_ang_vel_z_exp(
     env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:

@@ -67,7 +67,7 @@ HELIOS_LEG_CFG = ArticulationCfg(
     # init_state: initial pose and joint states
     # Note: set reasonable initial angles within joint limits
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.45),  # initial position in world coordinates (x, y, z)
+        pos=(0.0, 0.0, 0.32),  # initial position in world coordinates (x, y, z)
         # joint_pos: set initial angles for each joint (standing pose within limits)
         joint_pos={
             # right leg: thigh [0.7, 2.7], calf [-2.1, 0.9]

@@ -90,6 +90,13 @@ class HeliosLegRewardsCfg(RewardsCfg):
         params={"std": 0.5, "command_name": "base_velocity"},
     )
 
+    # X方向线速度跟踪奖励（只跟踪前后移动，适用于无髋关节的双轮腿机器人）
+    track_lin_vel_x_exp = RewTerm(
+        func=mdp.track_lin_vel_x_exp,
+        weight=0.0,
+        params={"std": 0.5, "command_name": "base_velocity"},
+    )
+
 
 @configclass
 class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
@@ -192,9 +199,9 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Z方向线速度惩罚（抑制上下抖动）
         self.rewards.lin_vel_z_l2.weight = -2.0
         # XY方向角速度惩罚（抑制翻滚/俯仰晃动）
-        self.rewards.ang_vel_xy_l2.weight = -0.1
+        self.rewards.ang_vel_xy_l2.weight = -0.05
         # 平坦姿态惩罚（鼓励保持水平）
-        self.rewards.flat_orientation_l2.weight = -2.0
+        self.rewards.flat_orientation_l2.weight = -0.5
         # 基座高度惩罚（维持目标站立高度）
         self.rewards.base_height_l2.weight = 0.0
         self.rewards.base_height_l2.params["target_height"] = 0.4  # 目标高度0.4m
@@ -261,10 +268,12 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.contact_forces.params["sensor_cfg"].body_names = [self.foot_link_name]
 
         # === 速度跟踪奖励 ===
-        # 禁用XY方向线速度跟踪（双轮腿机器人不能前后移动）
+        # 禁用XY方向线速度跟踪（使用单独的X方向跟踪）
         self.rewards.track_lin_vel_xy_exp.weight = 0
-        # Y方向线速度跟踪奖励（只跟踪侧向移动，主要奖励项）
-        self.rewards.track_lin_vel_y_exp.weight = 9.5
+        # 禁用Y方向线速度跟踪（双轮腿机器人没有髋关节，不能侧向移动）
+        self.rewards.track_lin_vel_y_exp.weight = 0
+        # X方向线速度跟踪奖励（双轮腿机器人只能前后移动，主要奖励项）
+        self.rewards.track_lin_vel_x_exp.weight = 10.0
         # Z方向角速度跟踪奖励（转向）
         self.rewards.track_ang_vel_z_exp.weight = 6.5
 
@@ -317,8 +326,8 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # ------------------------------Commands 命令配置------------------------------
         # X方向线速度命令范围 (m/s)
-        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
         # Y方向线速度命令范围 (m/s)
-        self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         # Z方向角速度命令范围 (rad/s)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)

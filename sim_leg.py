@@ -91,18 +91,18 @@ class RobotConfig:
             "right_foot_joint", "left_foot_joint"
         ]
 
-        # PD controller stiffness Kp [Nm/rad]
+        # PD controller stiffness Kp [Nm/rad] - 与 helios_leg.py 匹配
         self.kp = {
-            "right_thigh_joint": 30.0, "left_thigh_joint": 30.0,
-            "right_calf_joint": 30.0, "left_calf_joint": 30.0,
-            "right_foot_joint": 1.0, "left_foot_joint": 1.0,  # Wheels use velocity control
+            "right_thigh_joint": 80.0, "left_thigh_joint": 80.0,
+            "right_calf_joint": 80.0, "left_calf_joint": 80.0,
+            "right_foot_joint": 0.0, "left_foot_joint": 0.0,  # Wheels use velocity control, stiffness=0
         }
 
-        # PD controller damping Kd [Nm*s/rad]
+        # PD controller damping Kd [Nm*s/rad] - 与 helios_leg.py 匹配
         self.kd = {
             "right_thigh_joint": 4.0, "left_thigh_joint": 4.0,
             "right_calf_joint": 4.0, "left_calf_joint": 4.0,
-            "right_foot_joint": 1.0, "left_foot_joint": 1.0,
+            "right_foot_joint": 2.0, "left_foot_joint": 2.0,
         }
 
         # Integral gain Ki [Nm/(rad*s)]
@@ -132,7 +132,7 @@ class RobotConfig:
         self.wheel_scale = 5.0       # Wheel joints
 
         # Initial height [m]
-        self.init_height = 0.45
+        self.init_height = 0.32
 
         # Convert to arrays (ordered by joint_names)
         self.kp_array = np.array([self.kp[name] for name in self.joint_names])
@@ -793,7 +793,7 @@ def run_mujoco(policy, mujoco_model_path, sim_duration, dt, decimation,
         print("="*70 + "\n")
 
     # Set initial state
-    data.qpos[:3] = [0, 0, 0.31]
+    data.qpos[:3] = [0, 0, cfg.robot_config.init_height]
     data.qpos[3:7] = [1, 0, 0, 0]  # Quaternion [w, x, y, z]
     data.qpos[dof_ids] = default_angle.copy()
     data.qvel[:] = 0.0

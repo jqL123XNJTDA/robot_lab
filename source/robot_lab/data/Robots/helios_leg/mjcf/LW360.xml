@@ -38,7 +38,7 @@
         <light directional="true" diffuse=".6 .6 .6" specular="0.2 0.2 0.2" pos="0 0 4" dir="0 0 -1"/>
         <geom name="ground" type="plane" size="0 0 1" pos="0.001 0 0" quat="1 0 0 0" material="matplane" condim="1" conaffinity='15'/>
 
-        <body name="base_link" pos='0 0 0.5'>
+        <body name="base_link" pos='0 0 0.32'>
             <site name='imu' size='0.01' pos='0.0 0 0.0' quat='1 0 0 0'/>
             <inertial pos="0 0 0" mass="5.0" fullinertia="0.1 0.1 0.1 0 0 0"/>
             <joint name="floating_base_joint" type="free" limited='false'/>
