@@ -5,11 +5,6 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
-
-"""Script to train RL agent with RSL-RL."""
-
-"""Launch Isaac Sim Simulator first."""
-
 import argparse
 import os
 import sys
@@ -87,8 +82,8 @@ from isaaclab.envs import (
     multi_agent_to_single_agent,
 )
 from isaaclab.utils.dict import print_dict
-from isaaclab.utils.io import dump_yaml
-from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper
+from isaaclab.utils.io import dump_pickle, dump_yaml
+from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
@@ -101,7 +96,7 @@ torch.backends.cudnn.benchmark = False
 
 
 @hydra_task_config(args_cli.task, args_cli.agent)
-def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
+def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlOnPolicyRunnerCfg):
     """Train with RSL-RL agent."""
     # override configurations with non-hydra CLI arguments
     agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
@@ -114,12 +109,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # note: certain randomizations occur in the environment initialization so we set the seed here
     env_cfg.seed = agent_cfg.seed
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
-    # check for invalid combination of CPU device with distributed training
-    if args_cli.distributed and args_cli.device is not None and "cpu" in args_cli.device:
-        raise ValueError(
-            "Distributed training is not supported when using CPU device. "
-            "Please use GPU device (e.g., --device cuda) for distributed training."
-        )
 
     # multi-gpu training configuration
     if args_cli.distributed:
@@ -162,8 +151,21 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env = multi_agent_to_single_agent(env)
 
     # save resume path before creating a new log_dir
+
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
-        resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
+        # If load_run contains a path separator, it means we're loading from a different experiment
+        # In that case, use the parent directory (logs/rsl_rl) as the search path
+        if agent_cfg.load_run and "/" in agent_cfg.load_run:
+            # Extract experiment name and run dir from load_run (e.g., "thunder_gang_flat/2025-11-03_15-12-29")
+            load_path_parts = agent_cfg.load_run.split("/", 1)
+            experiment_name_from_load = load_path_parts[0]
+            run_dir_from_load = load_path_parts[1]
+            # Use parent directory to allow cross-experiment loading
+            parent_log_path = os.path.join("logs", "rsl_rl")
+            parent_log_path = os.path.abspath(parent_log_path)
+            resume_path = get_checkpoint_path(parent_log_path, experiment_name_from_load, agent_cfg.load_checkpoint, other_dirs=[run_dir_from_load])
+        else:
+            resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
 
     # wrap for video recording
     if args_cli.video:
@@ -186,7 +188,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     elif agent_cfg.class_name == "DistillationRunner":
         runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
     else:
-        raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
+        raise ValueError(f"Unsupported runner class: {runner_class_name}")
     # write git state to logs
     runner.add_git_repo_to_log(__file__)
     # load the checkpoint
@@ -198,6 +200,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
+    dump_pickle(os.path.join(log_dir, "params", "env.pkl"), env_cfg)
+    dump_pickle(os.path.join(log_dir, "params", "agent.pkl"), agent_cfg)
 
     # run training
     runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
