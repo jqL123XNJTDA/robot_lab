@@ -15,8 +15,11 @@ ppo_cfg：/home/liu/Desktop/robot_lab/source/robot_lab/robot_lab/tasks/manager_b
 
 ## 代码规定
 关键代码需要写中文注释
+
 ## 项目结构与模块组织
-Isaac Lab 扩展位于 。核心 Python 包放在 ，其中  定义机器人模型， 则包含 direct、manager_based 和 beyondmimic 环境。训练入口位于 ， 包含 URDF/MJCF 转换与动作预处理等工具。机器人网格与 URDF/MJCF 文件保存在 。Docker 相关文件在 ，文档资产在 ，运行时产物写入  与 。
+
+Isaac Lab 扩展位于 `source/robot_lab/`。核心 Python 包放在 `robot_lab/`，其中 `assets/` 定义机器人模型，`tasks/` 则包含 direct、manager_based 和 beyondmimic 环境。训练入口位于 `scripts/reinforcement_learning/`，`scripts/tools/` 包含 URDF/MJCF 转换与动作预处理等工具。机器人网格与 URDF/MJCF 文件保存在 `data/Robots/`。Docker 相关文件在 `docker/`，文档资产在 `docs/`，运行时产物写入 `logs/` 与 `outputs/`。
+
 ## 架构概览
 
 ### 配置层次结构
@@ -68,7 +71,15 @@ robot_lab/
 │
 ├── scripts/
 │   ├── reinforcement_learning/
-│   │   ├── rsl_rl/              # RSL-RL 训练（默认）
+│   │   ├── rsl_rl/              # RSL-RL 训练（默认）+ HIM 框架
+│   │   │   ├── train.py         # 标准 PPO 训练入口
+│   │   │   ├── train_him.py     # HIM 框架训练入口
+│   │   │   ├── play_him.py      # HIM 策略播放/导出
+│   │   │   ├── algorithms/      # HIM PPO 算法实现
+│   │   │   ├── modules/         # HIM Actor-Critic 和 Estimator 网络
+│   │   │   ├── runners/         # HIM 训练 Runner
+│   │   │   ├── storage/         # HIM Rollout Storage
+│   │   │   └── utils/           # 观测重排序等工具函数
 │   │   ├── cusrl/               # CusRL 训练（实验性）
 │   │   └── skrl/                # SKRL 训练（实验性）
 │   └── tools/                   # 工具脚本
@@ -176,6 +187,383 @@ gym.register(
 - `RAMP_UP_TIME`：软启动时间（默认 1.5s）
 - PD 增益：`kp_leg`、`kd_leg`（腿部）和 `kp_wheel`、`kd_wheel`（轮子）
 
+---
+
+## HIM 框架详解 (History-based Implicit Model)
+
+### 一、HIM 核心思想
+
+HIM (History-based Implicit Model) 是一个专为四足/轮腿机器人设计的先进强化学习框架，源自 HIMLoco 论文。其核心创新在于：
+
+#### 1.1 为什么需要历史观测？
+
+传统 RL 方法直接使用 IMU 数据作为速度估计，存在以下问题：
+- **积分漂移**：IMU 加速度积分会累积误差
+- **噪声敏感**：高频振动导致测量不准确
+- **状态不完整**：单帧观测无法捕捉动态信息
+
+HIM 的解决方案：**使用多帧历史观测 + 神经网络估计**
+```
+历史观测序列 [t-4, t-3, t-2, t-1, t] → Estimator → [velocity, latent]
+                                              ↓
+                              比 IMU 积分更准确的速度估计
+                              + 隐式编码的环境/动态信息
+```
+
+#### 1.2 SwAV 对比学习的作用
+
+SwAV (Swapped Assignment between Views) 是一种自监督对比学习方法：
+
+**核心思想**：让 Encoder 和 Target 网络学习一致的 latent 表示
+```
+Encoder(历史观测) → z_source → 分配到原型 → q_source
+Target(当前观测)  → z_target → 分配到原型 → q_target
+
+损失函数：用 q_source 预测 z_target，用 q_target 预测 z_source
+```
+
+**为什么有效**：
+- 强制 latent 编码有意义的信息（不是随机噪声）
+- 历史和当前观测的 latent 应该相似（同一状态）
+- 不同状态的 latent 应该不同（区分能力）
+
+#### 1.3 非对称 Actor-Critic 架构
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    训练时（仿真器中）                      │
+├─────────────────────────────────────────────────────────┤
+│  Actor: 历史观测 → Estimator → [obs + vel + latent]     │
+│                                       ↓                 │
+│                                  MLP → actions          │
+│                                                         │
+│  Critic: 特权观测（含真实速度）→ MLP → value             │
+│          ↑                                              │
+│     仅在训练时可用                                        │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│                    部署时（真实机器人）                    │
+├─────────────────────────────────────────────────────────┤
+│  Actor: 历史观测 → Estimator → [obs + vel + latent]     │
+│                                       ↓                 │
+│                                  MLP → actions          │
+│                                                         │
+│  (Critic 不需要，Estimator 已学会估计速度)                │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 二、HIM 网络架构
+
+#### 2.1 HIMEstimator 网络
+
+```python
+class HIMEstimator(nn.Module):
+    """
+    从历史观测中估计速度和隐式状态
+    
+    输入: obs_history [batch, temporal_steps * num_one_step_obs]
+          例如: [batch, 5 * 57] = [batch, 285]
+    
+    输出: velocity [batch, 3]     - 估计的基座线速度
+          latent   [batch, 16]    - 隐式状态表示
+    """
+    
+    def __init__(self):
+        # Encoder: 历史观测 → [velocity + latent]
+        self.encoder = nn.Sequential(
+            nn.Linear(285, 128), nn.ELU(),
+            nn.Linear(128, 64), nn.ELU(),
+            nn.Linear(64, 19)  # 3 (vel) + 16 (latent)
+        )
+        
+        # Target: 当前观测 → latent (用于 SwAV)
+        self.target = nn.Sequential(
+            nn.Linear(57, 128), nn.ELU(),
+            nn.Linear(128, 64), nn.ELU(),
+            nn.Linear(64, 16)
+        )
+        
+        # Prototype: 可学习的聚类中心
+        self.proto = nn.Embedding(16, 16)  # 16 个原型，每个 16 维
+```
+
+#### 2.2 HIMActorCritic 网络
+
+```python
+class HIMActorCritic(nn.Module):
+    """
+    HIM 版本的 Actor-Critic 网络
+    
+    Actor 输入: 当前观测(57D) + 估计速度(3D) + latent(16D) = 76D
+    Actor 输出: 动作均值 [batch, num_actions]
+    
+    Critic 输入: 特权观测（含真实速度）
+    Critic 输出: 状态价值 [batch, 1]
+    """
+    
+    def __init__(self):
+        # Estimator
+        self.estimator = HIMEstimator(...)
+        
+        # Actor: [current_obs + vel + latent] → actions
+        self.actor = nn.Sequential(
+            nn.Linear(76, 512), nn.ELU(),
+            nn.Linear(512, 256), nn.ELU(),
+            nn.Linear(256, 128), nn.ELU(),
+            nn.Linear(128, 16)  # num_actions
+        )
+        
+        # Critic: privileged_obs → value
+        self.critic = nn.Sequential(
+            nn.Linear(critic_dim, 512), nn.ELU(),
+            nn.Linear(512, 256), nn.ELU(),
+            nn.Linear(256, 128), nn.ELU(),
+            nn.Linear(128, 1)
+        )
+        
+        # 可学习的动作标准差
+        self.std = nn.Parameter(torch.ones(num_actions))
+    
+    def act(self, obs_history):
+        # 1. Estimator 预测速度和 latent
+        vel, latent = self.estimator(obs_history)
+        
+        # 2. 提取当前帧观测
+        current_obs = obs_history[:, -57:]
+        
+        # 3. 拼接输入
+        actor_input = torch.cat([current_obs, vel, latent], dim=-1)
+        
+        # 4. 计算动作
+        action_mean = self.actor(actor_input)
+        return Normal(action_mean, self.std).sample()
+```
+
+### 三、HIM 观测空间详解
+
+#### 3.1 Isaac Lab 输出格式（按变量分组）
+
+```
+Isaac Lab 历史观测格式 [batch, 285]:
+├── base_ang_vel:     [t-4, t-3, t-2, t-1, t] × 3D = 15D
+├── projected_gravity:[t-4, t-3, t-2, t-1, t] × 3D = 15D
+├── velocity_commands:[t-4, t-3, t-2, t-1, t] × 3D = 15D
+├── joint_pos:        [t-4, t-3, t-2, t-1, t] × 16D = 80D
+├── joint_vel:        [t-4, t-3, t-2, t-1, t] × 16D = 80D
+└── last_action:      [t-4, t-3, t-2, t-1, t] × 16D = 80D
+```
+
+#### 3.2 HIM 需要的格式（按时间步分组）
+
+```
+HIM 历史观测格式 [batch, 285]:
+├── timestep t-4: [ang_vel, gravity, cmd, jpos, jvel, action] = 57D
+├── timestep t-3: [ang_vel, gravity, cmd, jpos, jvel, action] = 57D
+├── timestep t-2: [ang_vel, gravity, cmd, jpos, jvel, action] = 57D
+├── timestep t-1: [ang_vel, gravity, cmd, jpos, jvel, action] = 57D
+└── timestep t-0: [ang_vel, gravity, cmd, jpos, jvel, action] = 57D
+```
+
+#### 3.3 观测重排序函数
+
+```python
+def reshape_isaac_to_him(obs_flat, history_len, obs_dims):
+    """
+    将 Isaac Lab 格式转换为 HIM 格式
+    
+    Args:
+        obs_flat: [batch, 285] Isaac Lab 格式
+        history_len: 5
+        obs_dims: [3, 3, 3, 16, 16, 16]  # 每个变量的维度
+    
+    Returns:
+        obs_him: [batch, 285] HIM 格式
+    """
+    # 1. 提取每个变量的历史
+    var_histories = []
+    offset = 0
+    for var_dim in obs_dims:  # [3, 3, 3, 16, 16, 16]
+        var_flat = obs_flat[:, offset:offset + var_dim * history_len]
+        var_history = var_flat.reshape(batch, history_len, var_dim)
+        var_histories.append(var_history)
+        offset += var_dim * history_len
+    
+    # 2. 按时间步重组
+    timesteps = []
+    for t in range(history_len):
+        timestep_vars = [var_hist[:, t, :] for var_hist in var_histories]
+        timestep_obs = torch.cat(timestep_vars, dim=-1)  # 57D
+        timesteps.append(timestep_obs)
+    
+    obs_him = torch.cat(timesteps, dim=-1)  # 285D
+    return obs_him
+```
+
+### 四、HIM 训练流程
+
+#### 4.1 数据收集阶段
+
+```python
+for step in range(num_steps_per_env):
+    # 1. 获取观测
+    obs_dict = env.get_observations()
+    actor_obs = obs_dict["policy"]    # [batch, 285] 历史观测
+    critic_obs = obs_dict["critic"]   # [batch, critic_dim] 特权观测
+    
+    # 2. 重排序观测 (Isaac Lab → HIM 格式)
+    actor_obs_him = reshape_isaac_to_him(actor_obs, history_len=5, obs_dims=[3,3,3,16,16,16])
+    
+    # 3. 选择动作
+    actions = ppo.act(actor_obs_him, critic_obs)
+    
+    # 4. 环境步进
+    next_obs_dict, rewards, dones, infos = env.step(actions)
+    
+    # 5. 存储转换（包含 next_critic_obs 用于速度监督）
+    ppo.process_env_step(rewards, dones, infos, next_critic_obs)
+```
+
+#### 4.2 网络更新阶段
+
+```python
+def update(self):
+    # 遍历 mini-batches
+    for batch in storage.mini_batch_generator():
+        obs_batch, critic_obs_batch, actions_batch, next_critic_obs_batch, ... = batch
+        
+        # ============ 更新 Estimator ============
+        # 使用 t+1 时刻的真实速度作为监督信号
+        estimation_loss, swap_loss = self.actor_critic.estimator.update(
+            obs_history=obs_batch,
+            next_critic_obs=next_critic_obs_batch  # 包含 t+1 时刻的速度
+        )
+        
+        # ============ 更新 Actor-Critic (PPO) ============
+        # 1. 前向传播
+        self.actor_critic.act(obs_batch)
+        actions_log_prob = self.actor_critic.get_actions_log_prob(actions_batch)
+        value = self.actor_critic.evaluate(critic_obs_batch)
+        
+        # 2. PPO 损失计算
+        ratio = torch.exp(actions_log_prob - old_log_prob)
+        surrogate = -advantages * ratio
+        surrogate_clipped = -advantages * torch.clamp(ratio, 1-eps, 1+eps)
+        surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
+        
+        value_loss = (value - returns).pow(2).mean()
+        
+        # 3. 总损失
+        loss = surrogate_loss + value_loss_coef * value_loss - entropy_coef * entropy
+        
+        # 4. 反向传播
+        self.optimizer.zero_grad()
+        loss.backward()
+        nn.utils.clip_grad_norm_(self.actor_critic.parameters(), max_grad_norm)
+        self.optimizer.step()
+```
+
+### 五、HIM 配置文件说明
+
+#### 5.1 环境配置 (`rough_env_cfg.py`)
+
+```python
+@configclass
+class MyDogHistObservationsCfg(ObservationsCfg):
+    """HIM 版本的观测配置"""
+    
+    @configclass
+    class PolicyCfg(ObsGroup):
+        # 各观测项定义...
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, scale=0.25, ...)
+        projected_gravity = ObsTerm(...)
+        velocity_commands = ObsTerm(...)
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel_without_wheel, ...)
+        joint_vel = ObsTerm(..., scale=0.05)
+        actions = ObsTerm(...)
+        
+        def __post_init__(self):
+            self.history_length = 5  # 关键配置！启用 5 帧历史
+    
+    @configclass
+    class CriticCfg(ObsGroup):
+        # 必须包含 base_lin_vel 用于监督 Estimator
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, ...)
+        # 其他观测项...
+        
+        def __post_init__(self):
+            self.history_length = 5
+    
+    @configclass
+    class HeightScanCfg(ObsGroup):
+        # 高度扫描分离到独立组
+        height_scan = ObsTerm(...)
+```
+
+#### 5.2 PPO 配置 (`rsl_rl_ppo_cfg.py`)
+
+```python
+@configclass
+class MyDogHistRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    """HIM 版本的 PPO 配置"""
+    
+    num_steps_per_env = 200  # 与 HIMLoco 论文一致
+    max_iterations = 20000
+    
+    # 观测组分配 - 关键配置！
+    obs_groups = {
+        "policy": ["policy"],                      # Actor 使用
+        "critic": ["critic", "height_scan_group"]  # Critic 使用
+    }
+    
+    algorithm = RslRlPpoAlgorithmCfg(
+        max_grad_norm=10.0,  # 与论文一致，不是 1.0
+        gamma=0.99,
+        learning_rate=1e-3,
+        ...
+    )
+```
+
+### 六、HIM 已注册环境
+
+| 环境 ID | 类型 | 地形 | 训练脚本 |
+|---------|------|------|----------|
+| `RobotLab-Isaac-Velocity-Flat-MyDog-v0` | 标准 PPO | 平坦 | `train.py` |
+| `RobotLab-Isaac-Velocity-Rough-MyDog-v0` | 标准 PPO | 粗糙 | `train.py` |
+| `RobotLab-Isaac-Velocity-Flat-MyDog-Hist-v0` | **HIM** | 平坦 | `train_him.py` |
+| `RobotLab-Isaac-Velocity-Rough-MyDog-Hist-v0` | **HIM** | 粗糙 | `train_him.py` |
+| `RobotLab-Isaac-Velocity-Handstand-MyDog-v0` | 标准 PPO | 平坦 | `train.py` |
+
+### 七、HIM 训练命令
+
+```bash
+# 1. Flat 地形预训练（推荐先用简单环境验证）
+python scripts/reinforcement_learning/rsl_rl/train_him.py \
+    --task RobotLab-Isaac-Velocity-Flat-MyDog-Hist-v0 \
+    --num_envs 4096 \
+    --headless
+
+# 2. Rough 地形训练
+python scripts/reinforcement_learning/rsl_rl/train_him.py \
+    --task RobotLab-Isaac-Velocity-Rough-MyDog-Hist-v0 \
+    --num_envs 4096 \
+    --headless
+
+# 3. 可选参数
+    --latent_dim 16           # latent 维度
+    --estimator_lr 1e-3       # Estimator 学习率
+    --num_prototype 16        # SwAV 原型数量
+    --estimation_loss_weight 1.0
+    --swap_loss_weight 1.0
+
+# 4. 播放/导出策略
+python scripts/reinforcement_learning/rsl_rl/play_him.py \
+    --task RobotLab-Isaac-Velocity-Rough-MyDog-Hist-v0 \
+    --num_envs 64
+```
+
+---
+
 ## 添加新机器人的工作流程
 
 1. **添加资产文件**
@@ -245,20 +633,35 @@ class MyEnvCfg(BaseEnvCfg):
   - 混合动作空间：腿部位置控制，轮子速度控制
   - 特殊观测：排除轮子位置（无限旋转）
   - 轮子特定奖励和约束
+  - **支持标准 PPO 和 HIM 框架**
 - **当前分支**：`feature/mydog`
 - **最近训练**：`logs/rsl_rl/mydog_rough/` 和 `mydog_flat/`
 
 ## 构建、测试与开发命令
 
+```bash
+# 安装
+python -m pip install -e source/robot_lab
+
+# 验证环境注册
+python scripts/tools/list_envs.py
+
+# TensorBoard
+tensorboard --logdir=logs
+```
 
 ## 编码风格与命名约定
-目标平台为 Linux 上的 Python 3.11，使用 4 空格缩进并由  限制 120 列宽。导入使用  （含自定义区段）组织，通过  触发 flake8、codespell 与 pyright 基础类型检查。环境命名遵循  约定，并与  下的目录结构保持一致。文件名使用 snake_case；仅为 Isaac/Omniverse API 或基于模式的标识符保留 camelCase。为每个模块添加简洁的文档字符串，描述机器人、任务或智能体配置。
+
+目标平台为 Linux 上的 Python 3.10+，使用 4 空格缩进并限制 120 列宽。导入使用 isort（含自定义区段）组织，通过 pre-commit 触发 flake8、codespell 与 pyright 基础类型检查。环境命名遵循 `RobotLab-Isaac-<Task>-<Terrain>-<Robot>-v<Version>` 约定，并与 `config/` 下的目录结构保持一致。文件名使用 snake_case；仅为 Isaac/Omniverse API 或基于模式的标识符保留 camelCase。为每个模块添加简洁的文档字符串，描述机器人、任务或智能体配置。
 
 ## 测试指南
-当新增环境或修改注册表时，将  视为快速冒烟测试。强化学习回归依赖使用固定随机种子的 ；度量写入 ，并在训练稳定性相关时分享 tensorboard 日志。使用  捕获可视化内容并记录 GPU 数量与  声明。BeyondMimic 或 AMP 路径需要重新生成  动作，并在提交 PR 前通过  进行验证。
+
+当新增环境或修改注册表时，将 `list_envs.py` 视为快速冒烟测试。强化学习回归依赖使用固定随机种子的 train 脚本；度量写入 `logs/`，并在训练稳定性相关时分享 tensorboard 日志。使用 `--video` 捕获可视化内容并记录 GPU 数量与硬件声明。
 
 ## 提交与 PR 指南
-近期提交混合了精简单行与传统  前缀。推荐使用 （例如 ）并提及相关 issue（如 ）。本地运行 pre-commit，排除生成的检查点或日志，确保新资产存放在正确的  品牌目录。PR 需要说明场景、列出验证命令、注明硬件（GPU 数量、Isaac Sim 版本），并附上保存于  的截图或短视频以说明任何可视化变更。添加动作或网格时请引用外部数据集或许可证。
+
+近期提交混合了精简单行与传统 `feat/fix/docs` 前缀。推荐使用语义化提交（例如 `feat: add HIM support`）并提及相关 issue。本地运行 pre-commit，排除生成的检查点或日志，确保新资产存放在正确的品牌目录。PR 需要说明场景、列出验证命令、注明硬件（GPU 数量、Isaac Sim 版本），并附上保存于 `docs/` 的截图或短视频以说明任何可视化变更。
 
 ## 安全与配置提示
-不要将 、个人 Omniverse 路径或专有网格归档提交到仓库。提供下载指引，而不是提交供应商数据。共享检查点时，通过制品存储发布并仅在 PR 中链接；上传前请清理日志中的内部主机名或凭证。
+
+不要将 API 密钥、个人 Omniverse 路径或专有网格归档提交到仓库。提供下载指引，而不是提交供应商数据。共享检查点时，通过制品存储发布并仅在 PR 中链接；上传前请清理日志中的内部主机名或凭证。

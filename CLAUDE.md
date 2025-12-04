@@ -67,6 +67,26 @@ python scripts/reinforcement_learning/rsl_rl/play.py \
     --video_length 200
 ```
 
+### HIM 框架训练（带历史观测）
+```bash
+# HIM Flat 地形预训练（推荐先在平坦地形训练）
+python scripts/reinforcement_learning/rsl_rl/train_him.py \
+    --task RobotLab-Isaac-Velocity-Flat-MyDog-Hist-v0 \
+    --num_envs 4096 \
+    --headless
+
+# HIM Rough 地形训练
+python scripts/reinforcement_learning/rsl_rl/train_him.py \
+    --task RobotLab-Isaac-Velocity-Rough-MyDog-Hist-v0 \
+    --num_envs 4096 \
+    --headless
+
+# 播放/导出 HIM 策略
+python scripts/reinforcement_learning/rsl_rl/play_him.py \
+    --task RobotLab-Isaac-Velocity-Rough-MyDog-Hist-v0 \
+    --num_envs 64
+```
+
 ### 多 GPU 训练
 ```bash
 # 单节点多 GPU (--nproc_per_node 表示 GPU 数量)
@@ -185,7 +205,15 @@ robot_lab/
 │
 ├── scripts/
 │   ├── reinforcement_learning/
-│   │   ├── rsl_rl/              # RSL-RL 训练（默认）
+│   │   ├── rsl_rl/              # RSL-RL 训练（默认）+ HIM 框架
+│   │   │   ├── train.py         # 标准 PPO 训练
+│   │   │   ├── train_him.py     # HIM 框架训练
+│   │   │   ├── play_him.py      # HIM 策略播放/导出
+│   │   │   ├── algorithms/      # HIM PPO 算法
+│   │   │   ├── modules/         # HIM Actor-Critic 和 Estimator
+│   │   │   ├── runners/         # HIM Runner
+│   │   │   ├── storage/         # HIM Rollout Storage
+│   │   │   └── utils/           # 观测重排序等工具
 │   │   ├── cusrl/               # CusRL 训练（实验性）
 │   │   └── skrl/                # SKRL 训练（实验性）
 │   └── tools/                   # 工具脚本
@@ -293,6 +321,242 @@ gym.register(
 - `RAMP_UP_TIME`：软启动时间（默认 1.5s）
 - PD 增益：`kp_leg`、`kd_leg`（腿部）和 `kp_wheel`、`kd_wheel`（轮子）
 
+---
+
+## HIM 框架详解 (History-based Implicit Model)
+
+### HIM 核心思想
+
+HIM (History-based Implicit Model) 是一个专为四足/轮腿机器人设计的强化学习框架，源自 HIMLoco 论文。其核心思想是：
+
+1. **历史观测编码**：使用多帧历史观测（默认 5 帧）来推断机器人当前的动态状态和环境特征
+2. **速度估计**：通过 Estimator 网络从历史观测中估计机器人速度，替代不可靠的 IMU 积分
+3. **隐式状态学习**：使用 SwAV 对比学习从历史观测中学习隐式状态表示（latent），编码地形、动态等信息
+4. **非对称 Actor-Critic**：Actor 使用估计值，Critic 使用真实特权信息
+
+### HIM 架构组件
+
+```
+HIM 训练框架
+├── HIMActorCritic (modules/him_actor_critic.py)
+│   ├── Estimator: 历史观测 → [velocity(3D), latent(16D)]
+│   ├── Actor: [current_obs + vel + latent] → actions
+│   └── Critic: privileged_obs → value
+│
+├── HIMEstimator (modules/him_estimator.py)
+│   ├── Encoder: 展平历史观测 → [velocity, latent]
+│   ├── Target: 当前观测 → latent (用于 SwAV 对比)
+│   ├── Proto: 可学习聚类中心 (num_prototype=16)
+│   └── Sinkhorn-Knopp: 最优传输软分配
+│
+├── HIMPPO (algorithms/him_ppo.py)
+│   ├── PPO 策略更新 (Actor + Critic)
+│   └── SwAV 对比学习 (Estimator)
+│
+├── HIMRolloutStorage (storage/him_rollout_storage.py)
+│   ├── 存储历史观测、动作、奖励
+│   └── 存储 next_critic_obs 用于速度监督
+│
+└── HIMOnPolicyRunner (runners/him_on_policy_runner.py)
+    ├── 观测重排序 (Isaac Lab → HIM 格式)
+    ├── 历史长度自动检测
+    ├── 观测组分配 (policy vs critic)
+    └── TensorBoard 日志 (含 estimation_loss, swap_loss)
+```
+
+### HIM 输入输出详解
+
+#### 1. 观测空间 (Input)
+
+**Policy 观测** - 每帧 57 维 × 5 帧 = 285 维：
+```
+观测顺序（Isaac Lab 格式 - 按变量分组）:
+[ang_vel_t-4...t-0, gravity_t-4...t-0, cmd_t-4...t-0, 
+ jpos_t-4...t-0, jvel_t-4...t-0, action_t-4...t-0]
+
+观测顺序（HIM 格式 - 按时间步分组）:
+[all_vars_t-4, all_vars_t-3, all_vars_t-2, all_vars_t-1, all_vars_t-0]
+
+每帧结构 (57D):
+├── base_ang_vel: 3D (缩放 0.25)
+├── projected_gravity: 3D
+├── velocity_commands: 3D
+├── joint_pos: 16D (轮子位置置零)
+├── joint_vel: 16D (缩放 0.05)
+└── last_action: 16D
+```
+
+**Critic 观测** - 包含特权信息：
+```
+├── base_lin_vel: 3D × 5 = 15D (速度真值，用于监督 Estimator)
+├── base_ang_vel: 3D × 5 = 15D
+├── projected_gravity: 3D × 5 = 15D
+├── velocity_commands: 3D × 5 = 15D
+├── joint_pos: 16D × 5 = 80D
+├── joint_vel: 16D × 5 = 80D
+├── last_action: 16D × 5 = 80D
+└── height_scan: 187D (仅 Rough 地形)
+```
+
+#### 2. Estimator 网络 (HIMEstimator)
+
+**输入**：历史观测 `[batch, 285]` (5帧 × 57维)
+
+**Encoder 网络**：
+```python
+Encoder: Linear(285 → 128) → ELU → Linear(128 → 64) → ELU → Linear(64 → 19)
+输出: [velocity(3D), latent(16D)]
+```
+
+**Target 网络**（用于 SwAV）：
+```python
+Target: Linear(57 → 128) → ELU → Linear(128 → 64) → ELU → Linear(64 → 16)
+输入: 当前帧观测 [batch, 57]
+输出: latent [batch, 16]
+```
+
+**SwAV 对比学习**：
+```python
+# 1. 计算相似度得分
+score_s = z_source @ prototype.T  # Encoder latent vs Prototypes
+score_t = z_target @ prototype.T  # Target latent vs Prototypes
+
+# 2. Sinkhorn-Knopp 生成软分配
+q_s = sinkhorn(score_s)  # 均衡化分配
+q_t = sinkhorn(score_t)
+
+# 3. 交叉预测损失
+swap_loss = -0.5 * (q_s * log_softmax(score_t/τ) + q_t * log_softmax(score_s/τ)).mean()
+
+# 4. 速度估计损失（使用 t+1 时刻的真实速度作为监督）
+estimation_loss = MSE(pred_vel, next_critic_obs[:, :3])
+```
+
+#### 3. Actor 网络
+
+**输入**：`[current_obs(57D) + estimated_vel(3D) + latent(16D)] = 76D`
+
+**网络结构**：
+```python
+Actor: Linear(76 → 512) → ELU → Linear(512 → 256) → ELU → Linear(256 → 128) → ELU → Linear(128 → 16)
+输出: action_mean [batch, 16]
+```
+
+**动作分布**：
+```python
+distribution = Normal(action_mean, learned_std)
+actions = distribution.sample()  # 训练时
+actions = action_mean  # 推理时（确定性）
+```
+
+#### 4. Critic 网络
+
+**输入**：Critic 观测（包含特权信息）`[batch, critic_dim]`
+
+**网络结构**：
+```python
+Critic: Linear(critic_dim → 512) → ELU → Linear(512 → 256) → ELU → Linear(256 → 128) → ELU → Linear(128 → 1)
+输出: value [batch, 1]
+```
+
+#### 5. 动作空间 (Output)
+
+```
+MyDog 动作空间 (16D):
+├── 腿部关节位置 (12D) - 位置控制
+│   ├── FR: hip, thigh, calf (缩放: 0.125, 0.25, 0.25)
+│   ├── FL: hip, thigh, calf
+│   ├── RR: hip, thigh, calf
+│   └── RL: hip, thigh, calf
+└── 轮子关节速度 (4D) - 速度控制
+    └── FR, FL, RR, RL foot (缩放: 5.0)
+```
+
+### HIM 训练流程
+
+```python
+# 1. 收集轨迹
+for step in range(num_steps_per_env):
+    # 重排序观测 (Isaac Lab → HIM 格式)
+    obs_him = reshape_isaac_to_him(obs_isaac, history_len=5, obs_dims=[3,3,3,16,16,16])
+    
+    # Actor 选择动作
+    actions = actor_critic.act(obs_him)
+    
+    # 环境步进
+    next_obs, rewards, dones, infos = env.step(actions)
+    
+    # 存储转换（包含 next_critic_obs 用于速度监督）
+    storage.add(obs, actions, rewards, dones, next_critic_obs)
+
+# 2. 计算 GAE 优势
+storage.compute_returns(last_values, gamma=0.99, lam=0.95)
+
+# 3. 更新网络
+for epoch in range(num_epochs):
+    for batch in storage.mini_batch_generator():
+        # 更新 Estimator (SwAV + 速度估计)
+        estimation_loss, swap_loss = estimator.update(obs_batch, next_critic_obs_batch)
+        
+        # 更新 Actor-Critic (PPO)
+        actor_critic.act(obs_batch)
+        surrogate_loss = compute_ppo_loss(...)
+        value_loss = compute_value_loss(...)
+        
+        loss = surrogate_loss + value_loss_coef * value_loss - entropy_coef * entropy
+        optimizer.step()
+```
+
+### HIM 关键配置
+
+**环境配置** (`rough_env_cfg.py`)：
+```python
+@configclass
+class MyDogHistObservationsCfg(ObservationsCfg):
+    @configclass
+    class PolicyCfg(ObsGroup):
+        # 观测项定义...
+        def __post_init__(self):
+            self.history_length = 5  # 关键：启用历史观测
+```
+
+**PPO 配置** (`rsl_rl_ppo_cfg.py`)：
+```python
+@configclass
+class MyDogHistRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = 200  # 与 HIMLoco 论文一致
+    obs_groups = {
+        "policy": ["policy"],
+        "critic": ["critic", "height_scan_group"]
+    }
+    algorithm = RslRlPpoAlgorithmCfg(
+        max_grad_norm=10.0,  # 与论文一致
+        # ...
+    )
+```
+
+### HIM 环境列表
+
+| 环境 ID | 描述 | 训练脚本 |
+|---------|------|----------|
+| `RobotLab-Isaac-Velocity-Flat-MyDog-v0` | 标准 PPO，平坦地形 | `train.py` |
+| `RobotLab-Isaac-Velocity-Rough-MyDog-v0` | 标准 PPO，粗糙地形 | `train.py` |
+| `RobotLab-Isaac-Velocity-Flat-MyDog-Hist-v0` | HIM，平坦地形 | `train_him.py` |
+| `RobotLab-Isaac-Velocity-Rough-MyDog-Hist-v0` | HIM，粗糙地形 | `train_him.py` |
+
+### HIM 与标准 PPO 对比
+
+| 特性 | 标准 PPO | HIM |
+|------|----------|-----|
+| 观测历史 | 1 帧 | 5 帧 |
+| 速度输入 | 直接使用 IMU | Estimator 估计 |
+| 隐式状态 | 无 | SwAV 学习的 latent |
+| Actor 输入 | 原始观测 | 当前观测 + vel + latent |
+| Critic | 相同观测 | 特权观测（含真实速度） |
+| 训练脚本 | `train.py` | `train_him.py` |
+
+---
+
 ## 添加新机器人的工作流程
 
 1. **添加资产文件**
@@ -325,6 +589,7 @@ gym.register(
 6. **使用领域随机化**实现鲁棒性
 7. **日志位置**：`logs/rsl_rl/<task_name>/<timestamp>/`
 8. **检查点频率**：每 100 次迭代保存
+9. **HIM 训练建议**：先用 Flat 环境验证 Estimator 收敛，再迁移到 Rough
 
 ## 重要架构模式
 
@@ -362,6 +627,7 @@ class MyEnvCfg(BaseEnvCfg):
   - 混合动作空间：腿部位置控制，轮子速度控制
   - 特殊观测：排除轮子位置（无限旋转）
   - 轮子特定奖励和约束
+  - 支持标准 PPO 和 HIM 框架
 - **当前分支**：`feature/mydog`
 - **最近训练**：`logs/rsl_rl/mydog_rough/` 和 `mydog_flat/`
 

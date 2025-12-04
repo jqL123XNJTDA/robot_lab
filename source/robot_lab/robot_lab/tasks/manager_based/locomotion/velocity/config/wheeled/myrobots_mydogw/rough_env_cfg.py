@@ -1,21 +1,36 @@
 # Copyright (c) 2024-2025 Ziqi Fan
 # SPDX-License-Identifier: Apache-2.0
 
+"""
+MyDog 轮腿机器人环境配置
+
+本文件包含两个版本：
+1. MyDogRoughEnvCfg - 标准 PPO 版本（无历史观测）
+2. MyDogHistRoughEnvCfg - HIM 版本（带 5 帧历史观测，用于 HIM 训练）
+"""
+
 import math
 
 from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import SceneEntityCfg, ObservationTermCfg as ObsTerm, ObservationGroupCfg as ObsGroup
 from isaaclab.utils import configclass
+from isaaclab.utils.noise import UniformNoiseCfg as Unoise
 
 import robot_lab.tasks.manager_based.locomotion.velocity.mdp as mdp
 from robot_lab.tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
     ActionsCfg,
     LocomotionVelocityRoughEnvCfg,
     RewardsCfg,
+    ObservationsCfg,
 )
 
 # 引入你的机器狗资产
 from robot_lab.assets.mydog import MYDOG_CFG
+
+
+# ==============================================================================
+# 标准 PPO 版本 - 无历史观测
+# ==============================================================================
 
 
 @configclass
@@ -105,8 +120,7 @@ class MyDogRewardsCfg(RewardsCfg):
         },
     )
 
-    # 前腿不良接触惩罚 - 只允许前轮(F.*_foot)接触地面，惩罚前腿hip/thigh/calf接触
-    # 使用 handstand_undesired_contacts (无重力系数调制，倒立时惩罚不会被缩小)
+    # 前腿不良接触惩罚
     handstand_front_leg_undesired_contacts = RewTerm(
         func=mdp.handstand_undesired_contacts,
         weight=0.0,
@@ -116,8 +130,7 @@ class MyDogRewardsCfg(RewardsCfg):
         },
     )
 
-    # 身体接触地面惩罚 - 机器人躯干(base_link)接触地面时给予惩罚
-    # 使用 handstand_undesired_contacts (无重力系数调制，倒立时惩罚不会被缩小)
+    # 身体接触地面惩罚
     handstand_body_contact = RewTerm(
         func=mdp.handstand_undesired_contacts,
         weight=0.0,
@@ -143,6 +156,8 @@ class MyDogRewardsCfg(RewardsCfg):
 
 @configclass
 class MyDogRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
+    """标准 PPO 版本 - 无历史观测"""
+    
     actions: MyDogActionsCfg = MyDogActionsCfg()
     rewards: MyDogRewardsCfg = MyDogRewardsCfg()
 
@@ -312,3 +327,572 @@ class MyDogRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.terminations.illegal_contact = None # 初始训练可以先放宽碰撞检测
         self.curriculum.command_levels_lin_vel = None
         self.curriculum.command_levels_ang_vel = None
+
+
+# ==============================================================================
+# HIM 版本 - 带 5 帧历史观测 (用于 HIM 训练框架)
+# ==============================================================================
+
+
+@configclass
+class MyDogHistCommandParams:
+    """HIM 版本的命令参数"""
+    # 速度命令范围
+    lin_vel_x: tuple = (-1.0, 1.0)
+    lin_vel_y: tuple = (-1.0, 1.0)
+    ang_vel_z: tuple = (-1.0, 1.0)
+
+
+@configclass
+class MyDogHistEventParams:
+    """HIM 版本的事件随机化参数"""
+    # 复位基座随机化
+    reset_base_pose_range_x: tuple = (-0.5, 0.5)
+    reset_base_pose_range_y: tuple = (-0.5, 0.5)
+    reset_base_pose_range_z: tuple = (0.0, 0.2)
+    reset_base_pose_range_roll: tuple = (-3.14, 3.14)
+    reset_base_pose_range_pitch: tuple = (-3.14, 3.14)
+    reset_base_pose_range_yaw: tuple = (-3.14, 3.14)
+    
+    reset_base_velocity_range_x: tuple = (-0.5, 0.5)
+    reset_base_velocity_range_y: tuple = (-0.5, 0.5)
+    reset_base_velocity_range_z: tuple = (-0.5, 0.5)
+    reset_base_velocity_range_roll: tuple = (-0.5, 0.5)
+    reset_base_velocity_range_pitch: tuple = (-0.5, 0.5)
+    reset_base_velocity_range_yaw: tuple = (-0.5, 0.5)
+    
+    # 外力/力矩随机化
+    external_force_range: tuple = (-20.0, 20.0)
+    external_torque_range: tuple = (-10.0, 10.0)
+
+
+@configclass
+class MyDogHistRewardWeights:
+    """HIM 版本的奖励权重配置 - 参考 HIMLoco 论文调整"""
+    
+    # 通用
+    is_terminated: float = 0.0
+    
+    # 速度跟踪奖励（主要目标）
+    track_lin_vel_xy_exp: float = 6.0
+    track_ang_vel_z_exp: float = 3.0
+    upward: float = 2.0
+    
+    # 根部惩罚
+    lin_vel_z_l2: float = -2.0
+    ang_vel_xy_l2: float = -0.05
+    flat_orientation_l2: float = 0.1
+    base_height_l2: float = 0.0
+    body_lin_acc_l2: float = 0.0
+    
+    # 关节惩罚
+    joint_torques_l2: float = -1e-5
+    joint_torques_wheel_l2: float = 0.0
+    joint_vel_l2: float = 0.0
+    joint_vel_wheel_l2: float = 0.0
+    joint_acc_l2: float = -2.5e-7
+    joint_acc_wheel_l2: float = 0
+    joint_pos_limits: float = -4.0
+    joint_vel_limits: float = 0.0
+    joint_power: float = -2e-5
+    stand_still: float = -2.0
+    joint_pos_penalty: float = -1.0
+    wheel_vel_penalty: float = 0.0
+    joint_mirror: float = -0.05
+    
+    # 动作惩罚
+    action_rate_l2: float = -0.01
+    
+    # 接触惩罚
+    undesired_contacts: float = -1.0
+    contact_forces: float = -6e-4
+    
+    # 其他奖励
+    feet_air_time: float = 0.0
+    feet_contact: float = 0.0
+    feet_contact_without_cmd: float = 0.1
+    feet_stumble: float = -5.0
+    feet_slide: float = 0.0
+    feet_height: float = 0.0
+    feet_height_body: float = 0.0
+    feet_gait: float = 0.0
+
+
+@configclass
+class MyDogHistObservationsCfg(ObservationsCfg):
+    """
+    HIM 版本的观测配置 - 带 5 帧历史观测
+    
+    观测结构（每帧 57 维 × 5 帧 = 285 维）：
+    - base_ang_vel: 3D × 5 = 15D
+    - projected_gravity: 3D × 5 = 15D  
+    - velocity_commands: 3D × 5 = 15D
+    - joint_pos: 16D × 5 = 80D (包含 4 个轮子位置置零)
+    - joint_vel: 16D × 5 = 80D
+    - actions: 16D × 5 = 80D
+    
+    注意：HIM 框架需要观测顺序为 [var1_history, var2_history, ...]
+    而 Actor 期望的顺序为 [timestep_0_all_vars, timestep_1_all_vars, ...]
+    这个转换在 HIMOnPolicyRunner 中的 reshape_isaac_to_him() 函数完成
+    """
+
+    @configclass
+    class PolicyCfg(ObsGroup):
+        """Policy 观测配置 - 带 5 帧历史信息"""
+        
+        # 基座角速度 - 5帧历史 (3维 × 5帧 = 15维)
+        base_ang_vel = ObsTerm(
+            func=mdp.base_ang_vel,
+            noise=Unoise(n_min=-0.2, n_max=0.2),
+            clip=(-100.0, 100.0),
+            scale=0.25,  # 与 HIMLoco 论文一致
+        )
+
+        # 投影重力向量 - 5帧历史 (3维 × 5帧 = 15维)
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 速度命令 - 5帧历史 (3维 × 5帧 = 15维)
+        velocity_commands = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "base_velocity"},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        
+        # 关节位置观测 - 5帧历史 (16关节 × 5帧 = 80维)
+        # 注意：轮子位置会被置零（因为轮子是无限旋转的）
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel_without_wheel,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True),
+                "wheel_asset_cfg": SceneEntityCfg("robot", joint_names=".*_foot_joint"),
+            },
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 关节速度观测 - 5帧历史 (16关节 × 5帧 = 80维)
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
+            noise=Unoise(n_min=-1.5, n_max=1.5),
+            clip=(-100.0, 100.0),
+            scale=0.05,  # 速度缩放
+        )
+
+        # 上一步动作 - 5帧历史 (16动作 × 5帧 = 80维)
+        actions = ObsTerm(
+            func=mdp.last_action,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+            self.history_length = 5  # HIM 核心：5 帧历史观测
+
+    @configclass
+    class CriticCfg(ObsGroup):
+        """
+        Critic 观测配置 - 带 5 帧历史信息
+        
+        Critic 需要额外包含 base_lin_vel（速度真值），用于：
+        1. 计算 value function（更准确的状态估计）
+        2. 监督 Estimator 的速度预测（SwAV 训练）
+        """
+
+        # 基座线速度 - 5帧历史 (3维 × 5帧 = 15维) 
+        # 【重要】这是 HIM 训练的监督信号！
+        base_lin_vel = ObsTerm(
+            func=mdp.base_lin_vel,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 基座角速度 - 5帧历史 (3维 × 5帧 = 15维)
+        base_ang_vel = ObsTerm(
+            func=mdp.base_ang_vel,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 投影重力向量 - 5帧历史 (3维 × 5帧 = 15维)
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 速度命令 - 5帧历史 (3维 × 5帧 = 15维)
+        velocity_commands = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "base_velocity"},
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 关节位置观测 - 5帧历史 (16关节 × 5帧 = 80维)
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel_without_wheel,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True),
+                "wheel_asset_cfg": SceneEntityCfg("robot", joint_names=".*_foot_joint"),
+            },
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 关节速度观测 - 5帧历史 (16关节 × 5帧 = 80维)
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 上一步动作 - 5帧历史 (16动作 × 5帧 = 80维)
+        actions = ObsTerm(
+            func=mdp.last_action,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = False  # Critic 不加噪声
+            self.concatenate_terms = True
+            self.history_length = 5  # 与 Policy 一致
+
+    @configclass
+    class HeightScanCfg(ObsGroup):
+        """
+        高度扫描观测组 - 分离出来便于 HIM Runner 处理
+        
+        注意：height_scan 不带历史，因为地形信息相对稳定
+        """
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner"), "offset": 0.05},
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    # 实例化观测组
+    policy: PolicyCfg = PolicyCfg()
+    critic: CriticCfg = CriticCfg()
+    height_scan_group: HeightScanCfg = HeightScanCfg()
+
+
+@configclass
+class MyDogHistActionsCfg(ActionsCfg):
+    """HIM 版本的动作配置 - 与标准版相同"""
+
+    joint_pos = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[
+            "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
+            "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
+            "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint",
+            "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint",
+        ],
+        scale={
+            ".*_hip_joint": 0.125,
+            "^(?!.*_hip_joint).*": 0.25,
+        },
+        use_default_offset=True,
+        clip={".*": (-100.0, 100.0)},
+        preserve_order=True,
+    )
+
+    joint_vel = mdp.JointVelocityActionCfg(
+        asset_name="robot",
+        joint_names=[
+            "FR_foot_joint", "FL_foot_joint",
+            "RR_foot_joint", "RL_foot_joint",
+        ],
+        scale=5.0,
+        use_default_offset=True,
+        clip={".*": (-100.0, 100.0)},
+        preserve_order=True,
+    )
+
+
+@configclass
+class MyDogHistRewardsCfg(RewardsCfg):
+    """HIM 版本的奖励配置"""
+
+    # 轮子相关的额外奖励项
+    joint_vel_wheel_l2 = RewTerm(
+        func=mdp.joint_vel_l2,
+        weight=0.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names="")},
+    )
+
+    joint_acc_wheel_l2 = RewTerm(
+        func=mdp.joint_acc_l2,
+        weight=0.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names="")},
+    )
+
+    joint_torques_wheel_l2 = RewTerm(
+        func=mdp.joint_torques_l2,
+        weight=0.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names="")},
+    )
+
+
+@configclass
+class MyDogHistActuatorGains:
+    """执行器 PD 增益配置"""
+    hip_stiffness: float = 100.0
+    hip_damping: float = 5.0
+    thigh_stiffness: float = 100.0
+    thigh_damping: float = 5.0
+    calf_stiffness: float = 100.0
+    calf_damping: float = 5.0
+    wheel_stiffness: float = 0.0
+    wheel_damping: float = 1.0
+
+
+@configclass
+class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
+    """
+    HIM 版本的环境配置 - 带 5 帧历史观测
+    
+    与标准版本的主要区别：
+    1. 观测带 5 帧历史 (history_length=5)
+    2. height_scan 分离到独立观测组
+    3. Critic 包含 base_lin_vel 用于监督 Estimator
+    4. 奖励权重参考 HIMLoco 论文调整
+    """
+
+    # 使用 HIM 版本的配置
+    observations: MyDogHistObservationsCfg = MyDogHistObservationsCfg()
+    actions: MyDogHistActionsCfg = MyDogHistActionsCfg()
+    rewards: MyDogHistRewardsCfg = MyDogHistRewardsCfg()
+    reward_weights: MyDogHistRewardWeights = MyDogHistRewardWeights()
+    event_params: MyDogHistEventParams = MyDogHistEventParams()
+    command_params: MyDogHistCommandParams = MyDogHistCommandParams()
+    actuator_gains: MyDogHistActuatorGains = MyDogHistActuatorGains()
+
+    # Link 名称配置
+    base_link_name = "base_link"
+    foot_link_name = ".*_foot"
+
+    # 关节名称配置
+    leg_joint_names = [
+        "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
+        "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
+        "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint",
+        "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint",
+    ]
+    wheel_joint_names = [
+        "FR_foot_joint", "FL_foot_joint", "RR_foot_joint", "RL_foot_joint",
+    ]
+    joint_names = leg_joint_names + wheel_joint_names
+
+    def __post_init__(self):
+        # 调用父类初始化
+        super().__post_init__()
+
+        # ------------------------------Scene------------------------------
+        self.scene.robot = MYDOG_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
+        self.scene.height_scanner_base.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
+        
+        # 初始状态配置
+        self.scene.robot.init_state.pos = (0.0, 0.0, 0.55)
+        self.scene.robot.init_state.joint_pos = {
+            "FR_hip_joint": -0.1,
+            "FR_thigh_joint": -0.9,
+            "FR_calf_joint": 1.8,
+            "FL_hip_joint": 0.1,
+            "FL_thigh_joint": 0.9,
+            "FL_calf_joint": -1.8,
+            "RR_hip_joint": 0.1,
+            "RR_thigh_joint": 2.2,
+            "RR_calf_joint": 1.8,
+            "RL_hip_joint": -0.1,
+            "RL_thigh_joint": -2.2,
+            "RL_calf_joint": -1.8,
+            ".*_foot_joint": 0.0,
+        }
+        self.scene.robot.init_state.joint_vel = {".*": 0.0}
+
+        # ------------------------------Observations------------------------------
+        # 配置关节观测
+        self.observations.policy.joint_pos.params["asset_cfg"].joint_names = self.joint_names
+        if "wheel_asset_cfg" in self.observations.policy.joint_pos.params:
+            self.observations.policy.joint_pos.params["wheel_asset_cfg"].joint_names = self.wheel_joint_names
+        self.observations.policy.joint_vel.params["asset_cfg"].joint_names = self.joint_names
+
+        self.observations.critic.joint_pos.params["asset_cfg"].joint_names = self.joint_names
+        if "wheel_asset_cfg" in self.observations.critic.joint_pos.params:
+            self.observations.critic.joint_pos.params["wheel_asset_cfg"].joint_names = self.wheel_joint_names
+        self.observations.critic.joint_vel.params["asset_cfg"].joint_names = self.joint_names
+
+        # ------------------------------Actions------------------------------
+        self.actions.joint_pos.scale = {
+            ".*_hip_joint": 0.125,
+            "^(?!.*_hip_joint).*": 0.25,
+        }
+        self.actions.joint_vel.scale = 5.0
+        self.actions.joint_pos.clip = {".*": (-100.0, 100.0)}
+        self.actions.joint_vel.clip = {".*": (-100.0, 100.0)}
+        self.actions.joint_pos.joint_names = self.leg_joint_names
+        self.actions.joint_vel.joint_names = self.wheel_joint_names
+
+        # ------------------------------Events------------------------------
+        e = self.event_params
+        
+        # 复位基座随机化
+        self.events.randomize_reset_base.params = {
+            "pose_range": {
+                "x": e.reset_base_pose_range_x,
+                "y": e.reset_base_pose_range_y,
+                "z": e.reset_base_pose_range_z,
+                "roll": e.reset_base_pose_range_roll,
+                "pitch": e.reset_base_pose_range_pitch,
+                "yaw": e.reset_base_pose_range_yaw,
+            },
+            "velocity_range": {
+                "x": e.reset_base_velocity_range_x,
+                "y": e.reset_base_velocity_range_y,
+                "z": e.reset_base_velocity_range_z,
+                "roll": e.reset_base_velocity_range_roll,
+                "pitch": e.reset_base_velocity_range_pitch,
+                "yaw": e.reset_base_velocity_range_yaw,
+            },
+        }
+        
+        # 质量随机化
+        self.events.randomize_rigid_body_mass_base.params["asset_cfg"].body_names = [self.base_link_name]
+        self.events.randomize_rigid_body_mass_others.params["asset_cfg"].body_names = [
+            f"^(?!.*{self.base_link_name}).*"
+        ]
+        
+        # 质心随机化
+        self.events.randomize_com_positions.params["asset_cfg"].body_names = [self.base_link_name]
+        
+        # 外力/力矩随机化
+        self.events.randomize_apply_external_force_torque.params["asset_cfg"].body_names = [self.base_link_name]
+        self.events.randomize_apply_external_force_torque.params["force_range"] = e.external_force_range
+        self.events.randomize_apply_external_force_torque.params["torque_range"] = e.external_torque_range
+
+        # ------------------------------Rewards------------------------------
+        w = self.reward_weights
+        
+        # 通用
+        self.rewards.is_terminated.weight = w.is_terminated
+        
+        # 速度跟踪奖励
+        self.rewards.track_lin_vel_xy_exp.weight = w.track_lin_vel_xy_exp
+        self.rewards.track_ang_vel_z_exp.weight = w.track_ang_vel_z_exp
+        self.rewards.upward.weight = w.upward
+        
+        # 根部惩罚
+        self.rewards.lin_vel_z_l2.weight = w.lin_vel_z_l2
+        self.rewards.ang_vel_xy_l2.weight = w.ang_vel_xy_l2
+        self.rewards.flat_orientation_l2.weight = w.flat_orientation_l2
+        self.rewards.base_height_l2.weight = w.base_height_l2
+        self.rewards.base_height_l2.params["target_height"] = 0.55
+        self.rewards.base_height_l2.params["asset_cfg"].body_names = [self.base_link_name]
+        self.rewards.body_lin_acc_l2.weight = w.body_lin_acc_l2
+        self.rewards.body_lin_acc_l2.params["asset_cfg"].body_names = [self.base_link_name]
+        
+        # 关节惩罚
+        self.rewards.joint_torques_l2.weight = w.joint_torques_l2
+        self.rewards.joint_torques_l2.params["asset_cfg"].joint_names = self.leg_joint_names
+        self.rewards.joint_torques_wheel_l2.weight = w.joint_torques_wheel_l2
+        self.rewards.joint_torques_wheel_l2.params["asset_cfg"].joint_names = self.wheel_joint_names
+        self.rewards.joint_vel_l2.weight = w.joint_vel_l2
+        self.rewards.joint_vel_l2.params["asset_cfg"].joint_names = self.leg_joint_names
+        self.rewards.joint_vel_wheel_l2.weight = w.joint_vel_wheel_l2
+        self.rewards.joint_vel_wheel_l2.params["asset_cfg"].joint_names = self.wheel_joint_names
+        self.rewards.joint_acc_l2.weight = w.joint_acc_l2
+        self.rewards.joint_acc_l2.params["asset_cfg"].joint_names = self.leg_joint_names
+        self.rewards.joint_acc_wheel_l2.weight = w.joint_acc_wheel_l2
+        self.rewards.joint_acc_wheel_l2.params["asset_cfg"].joint_names = self.wheel_joint_names
+        self.rewards.joint_pos_limits.weight = w.joint_pos_limits
+        self.rewards.joint_pos_limits.params["asset_cfg"].joint_names = self.leg_joint_names
+        self.rewards.joint_vel_limits.weight = w.joint_vel_limits
+        self.rewards.joint_vel_limits.params["asset_cfg"].joint_names = self.wheel_joint_names
+        self.rewards.joint_power.weight = w.joint_power
+        self.rewards.joint_power.params["asset_cfg"].joint_names = self.leg_joint_names
+        self.rewards.stand_still.weight = w.stand_still
+        self.rewards.stand_still.params["asset_cfg"].joint_names = self.leg_joint_names
+        self.rewards.joint_pos_penalty.weight = w.joint_pos_penalty
+        self.rewards.joint_pos_penalty.params["asset_cfg"].joint_names = self.leg_joint_names
+        self.rewards.wheel_vel_penalty.weight = w.wheel_vel_penalty
+        self.rewards.wheel_vel_penalty.params["sensor_cfg"].body_names = [self.foot_link_name]
+        self.rewards.wheel_vel_penalty.params["asset_cfg"].joint_names = self.wheel_joint_names
+        self.rewards.joint_mirror.weight = w.joint_mirror
+        self.rewards.joint_mirror.params["mirror_joints"] = [
+            ["FR_(hip|thigh|calf).*", "RL_(hip|thigh|calf).*"],
+            ["FL_(hip|thigh|calf).*", "RR_(hip|thigh|calf).*"],
+        ]
+        
+        # 动作惩罚
+        self.rewards.action_rate_l2.weight = w.action_rate_l2
+        
+        # 接触惩罚
+        self.rewards.undesired_contacts.weight = w.undesired_contacts
+        self.rewards.undesired_contacts.params["sensor_cfg"].body_names = [f"^(?!.*{self.foot_link_name}).*"]
+        
+        self.rewards.contact_forces.weight = w.contact_forces
+        self.rewards.contact_forces.params["sensor_cfg"].body_names = [self.foot_link_name]
+        
+        # 其他奖励
+        self.rewards.feet_air_time.weight = w.feet_air_time
+        self.rewards.feet_air_time.params["threshold"] = 0.5
+        self.rewards.feet_air_time.params["sensor_cfg"].body_names = [self.foot_link_name]
+        self.rewards.feet_contact.weight = w.feet_contact
+        self.rewards.feet_contact.params["sensor_cfg"].body_names = [self.foot_link_name]
+        self.rewards.feet_contact_without_cmd.weight = w.feet_contact_without_cmd
+        self.rewards.feet_contact_without_cmd.params["sensor_cfg"].body_names = [self.foot_link_name]
+        self.rewards.feet_stumble.weight = w.feet_stumble
+        self.rewards.feet_stumble.params["sensor_cfg"].body_names = [self.foot_link_name]
+        self.rewards.feet_slide.weight = w.feet_slide
+        self.rewards.feet_slide.params["sensor_cfg"].body_names = [self.foot_link_name]
+        self.rewards.feet_slide.params["asset_cfg"].body_names = [self.foot_link_name]
+        self.rewards.feet_height.weight = w.feet_height
+        self.rewards.feet_height.params["target_height"] = 0.1
+        self.rewards.feet_height.params["asset_cfg"].body_names = [self.foot_link_name]
+        self.rewards.feet_height_body.weight = w.feet_height_body
+        self.rewards.feet_height_body.params["target_height"] = -0.4
+        self.rewards.feet_height_body.params["asset_cfg"].body_names = [self.foot_link_name]
+        self.rewards.feet_gait.weight = w.feet_gait
+        self.rewards.feet_gait.params["synced_feet_pair_names"] = (
+            ("FL_foot", "RR_foot"),
+            ("FR_foot", "RL_foot"),
+        )
+
+        # 删除权重为 0 的奖励
+        if self.__class__.__name__ == "MyDogHistRoughEnvCfg":
+            self.disable_zero_weight_rewards()
+
+        # ------------------------------Terminations------------------------------
+        self.terminations.illegal_contact = None
+        
+        # 禁用部分课程学习
+        self.curriculum.command_levels = None
+        self.curriculum.disturbance_levels = None
+        self.curriculum.mass_randomization_levels = None  
+        self.curriculum.com_randomization_levels = None
+
+        # ------------------------------Commands------------------------------
+        c = self.command_params
+        self.commands.base_velocity.ranges.lin_vel_x = c.lin_vel_x
+        self.commands.base_velocity.ranges.lin_vel_y = c.lin_vel_y
+        self.commands.base_velocity.ranges.ang_vel_z = c.ang_vel_z

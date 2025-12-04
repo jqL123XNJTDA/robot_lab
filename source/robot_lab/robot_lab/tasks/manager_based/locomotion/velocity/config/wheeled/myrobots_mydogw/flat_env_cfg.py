@@ -1,25 +1,39 @@
 # Copyright (c) 2024-2025 Ziqi Fan
 # SPDX-License-Identifier: Apache-2.0
 
+"""
+MyDog 轮腿机器人平坦地形环境配置
+
+本文件包含：
+1. MyDogFlatEnvCfg - 标准 PPO 版本（无历史观测）
+2. MyDogHistFlatEnvCfg - HIM 版本（带 5 帧历史观测）
+3. MyDogHandstandFlatEnvCfg - 倒立训练专用配置
+"""
+
 from isaaclab.managers import SceneEntityCfg, TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
 import robot_lab.tasks.manager_based.locomotion.velocity.mdp as mdp
 
-from .rough_env_cfg import MyDogRoughEnvCfg
+from .rough_env_cfg import MyDogRoughEnvCfg, MyDogHistRoughEnvCfg
+
+
+# ==============================================================================
+# 标准 PPO 版本 - Flat 地形
+# ==============================================================================
 
 
 @configclass
 class MyDogFlatEnvCfg(MyDogRoughEnvCfg):
+    """标准 PPO 版本 - 平坦地形"""
+    
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
 
         # 覆盖奖励
-        
         self.rewards.base_height_l2.params["sensor_cfg"] = None
        
-        
         # 强制平面地形
         self.scene.terrain.terrain_type = "plane"
         self.scene.terrain.terrain_generator = None
@@ -35,6 +49,55 @@ class MyDogFlatEnvCfg(MyDogRoughEnvCfg):
         # 删除权重为0的奖励
         if self.__class__.__name__ == "MyDogFlatEnvCfg":
             self.disable_zero_weight_rewards()
+
+
+# ==============================================================================
+# HIM 版本 - Flat 地形
+# ==============================================================================
+
+
+@configclass
+class MyDogHistFlatEnvCfg(MyDogHistRoughEnvCfg):
+    """
+    HIM 版本 - 平坦地形
+    
+    用于：
+    1. 初期在平坦地形上预训练（更容易收敛）
+    2. 测试和调试 HIM 框架
+    
+    与 MyDogHistRoughEnvCfg 的区别：
+    1. 地形类型为平面
+    2. 禁用高度扫描（height_scan_group）
+    3. 禁用地形课程学习
+    """
+
+    def __post_init__(self):
+        # 调用父类初始化
+        super().__post_init__()
+
+        # 覆盖高度相关奖励
+        self.rewards.base_height_l2.params["sensor_cfg"] = None
+        
+        # 强制平面地形
+        self.scene.terrain.terrain_type = "plane"
+        self.scene.terrain.terrain_generator = None
+        
+        # 禁用高度扫描（Flat 环境不需要）
+        self.scene.height_scanner = None
+        # 注意：HIM 版本的 height_scan 在 height_scan_group 中
+        # 这里只是禁用了 scanner，Runner 会根据 obs_groups 配置决定是否使用
+        
+        # 禁用地形课程
+        self.curriculum.terrain_levels = None
+
+        # 删除权重为 0 的奖励
+        if self.__class__.__name__ == "MyDogHistFlatEnvCfg":
+            self.disable_zero_weight_rewards()
+
+
+# ==============================================================================
+# 倒立训练专用配置
+# ==============================================================================
 
 
 @configclass
@@ -66,7 +129,6 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         self.rewards.ang_vel_xy_l2.weight = 0
         self.rewards.base_height_l2.weight = 0
 
-        
         # ------------------------------Handstand Rewards------------------------------
         handstand_type = "back"  # 使用前腿支撑倒立
         if handstand_type == "front":
@@ -95,7 +157,7 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         self.rewards.handstand_feet_on_air.params["threshold"] = 5.0
         self.rewards.handstand_feet_on_air.params["knee_body_names"] = knee_patterns
 
-        self.rewards.handstand_feet_air_time.weight =1.0  # 提高权重
+        self.rewards.handstand_feet_air_time.weight = 1.0  # 提高权重
         self.rewards.handstand_feet_air_time.params["_sensor_cfg"].body_names = [air_foot_pattern]
         self.rewards.handstand_feet_air_time.params["_threshold"] = 0.3  # 降低门槛，更容易获得正奖励
         self.rewards.handstand_feet_air_time.params["_knee_body_names"] = knee_patterns
@@ -113,19 +175,12 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         # 倒立专用速度惩罚 - 保持静止
         self.rewards.handstand_lin_vel_xy_l2.weight = -1.5   # 惩罚 YZ 方向移动
         self.rewards.handstand_ang_vel_xyz_l2.weight = -1.5  # 惩罚旋转
-        # ------------------------------Events------------------------------
-        # 关闭复位随机化，保持每次 episode 初始姿态一致
-        #self.events.randomize_reset_base = None
 
         # ------------------------------Terminations------------------------------
         # 注意：bad_orientation 会在 |gravity_z| > threshold 时终止
         # 倒立目标是 gravity_z ≈ 0，但初始姿态是站立 (gravity_z = -1)
         # 如果开启，会导致刚开始就终止，无法学习
         # 建议：训练初期关闭，等学会倒立后再开启微调
-        # self.terminations.bad_orientation = DoneTerm(
-        #     func=mdp.bad_orientation,
-        #     params={"asset_cfg": SceneEntityCfg("robot"), "threshold": 0.7},
-        # )
 
         # 删除权重为0的奖励
         if self.__class__.__name__ == "MyDogHandstandFlatEnvCfg":
