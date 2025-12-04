@@ -288,6 +288,59 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print(f"[WARN] 后腿Calf高度监控初始化失败: {exc}")
     # ====================================
 
+    # ========== 接触力监控 (base_link, calf_link) ==========
+    contact_force_monitor = None
+    try:
+        # 获取接触力传感器
+        contact_sensor = env.unwrapped.scene.sensors["contact_forces"]
+        robot_asset = env.unwrapped.scene["robot"]
+
+        # 监控的刚体名称 (与 illegal_contact 配置一致)
+        # 根据机器人类型自动检测
+        all_body_names = robot_asset.body_names
+
+        # 尝试匹配 base_link 和 calf_link
+        monitor_body_names = []
+        monitor_body_ids = []
+
+        # 查找 base_link
+        for name in all_body_names:
+            if "base" in name.lower():
+                body_ids = robot_asset.find_bodies(name)[0]
+                if isinstance(body_ids, torch.Tensor):
+                    monitor_body_ids.append(body_ids.item())
+                else:
+                    monitor_body_ids.append(int(body_ids[0]))
+                monitor_body_names.append(name)
+                break
+
+        # 查找所有 calf_link
+        for name in all_body_names:
+            if "calf" in name.lower():
+                body_ids = robot_asset.find_bodies(name)[0]
+                if isinstance(body_ids, torch.Tensor):
+                    monitor_body_ids.append(body_ids.item())
+                else:
+                    monitor_body_ids.append(int(body_ids[0]))
+                monitor_body_names.append(name)
+
+        if len(monitor_body_ids) > 0:
+            contact_force_monitor = {
+                "sensor": contact_sensor,
+                "body_ids": torch.tensor(monitor_body_ids, dtype=torch.long, device=env.unwrapped.device),
+                "body_names": monitor_body_names,
+                "threshold": 1.0,  # 与 illegal_contact 阈值一致
+                "print_interval": 50,  # 每50步打印一次统计
+                "step_counter": 0,
+            }
+            print(f"[INFO] 接触力监控启用: {monitor_body_names}")
+            print(f"[INFO] 接触力阈值: {contact_force_monitor['threshold']} N")
+        else:
+            print("[WARN] 未找到 base_link 或 calf_link，接触力监控未启用")
+    except Exception as exc:
+        print(f"[WARN] 接触力监控初始化失败: {exc}")
+    # ====================================
+
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
@@ -365,6 +418,43 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     print(f"[INFO][Step {timestep}] 所有环境后腿Calf高度统计:")
                     for i, name in enumerate(body_names):
                         print(f"  {name}: mean={mean_heights[i]:.3f} m, min={min_heights[i]:.3f} m, max={max_heights[i]:.3f} m")
+            # ====================================
+
+            # ========== 接触力监控打印 ==========
+            if contact_force_monitor is not None:
+                contact_force_monitor["step_counter"] += 1
+                sensor = contact_force_monitor["sensor"]
+                body_ids = contact_force_monitor["body_ids"]
+                body_names = contact_force_monitor["body_names"]
+                threshold = contact_force_monitor["threshold"]
+
+                # 获取接触力 (num_envs, history_len, num_bodies, 3)
+                # 只取最新一帧 [:, -1, ...]
+                net_forces = sensor.data.net_forces_w_history[:, -1, body_ids, :]
+                # 计算力的模长 (num_envs, num_bodies)
+                force_magnitude = torch.norm(net_forces, dim=-1).detach().cpu()
+
+                # 检测超过阈值的接触
+                exceeds_threshold = force_magnitude > threshold
+
+                # 实时打印超限警告 (只打印 Env 0)
+                if exceeds_threshold[0].any():
+                    for i, name in enumerate(body_names):
+                        if exceeds_threshold[0, i]:
+                            print(f"[CONTACT][Step {timestep}] Env 0 {name} 接触力超限: {force_magnitude[0, i]:.2f} N > {threshold} N")
+
+                # 定期打印统计信息
+                if contact_force_monitor["step_counter"] % contact_force_monitor["print_interval"] == 0:
+                    # 统计所有环境中超限的数量
+                    num_exceeds = exceeds_threshold.sum(dim=0)  # (num_bodies,)
+                    total_envs = force_magnitude.shape[0]
+
+                    print(f"[INFO][Step {timestep}] 接触力统计 (阈值={threshold}N):")
+                    for i, name in enumerate(body_names):
+                        mean_force = force_magnitude[:, i].mean().item()
+                        max_force = force_magnitude[:, i].max().item()
+                        exceed_ratio = num_exceeds[i].item() / total_envs * 100
+                        print(f"  {name}: mean={mean_force:.2f}N, max={max_force:.2f}N, 超限率={exceed_ratio:.1f}%")
             # ====================================
 
         timestep += 1  # 始终递增 timestep 用于调试
