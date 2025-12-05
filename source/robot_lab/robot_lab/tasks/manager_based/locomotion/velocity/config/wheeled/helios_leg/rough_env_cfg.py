@@ -196,18 +196,18 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.is_terminated.weight = -200
 
         # === 基座/根部惩罚 ===
-        # Z方向线速度惩罚（抑制上下抖动）
-        self.rewards.lin_vel_z_l2.weight = -2.0
-        # XY方向角速度惩罚（抑制翻滚/俯仰晃动）
-        self.rewards.ang_vel_xy_l2.weight = -0.05
-        # 平坦姿态惩罚（鼓励保持水平）
-        self.rewards.flat_orientation_l2.weight = -1.5
-        # 基座高度惩罚（维持目标站立高度）
-        self.rewards.base_height_l2.weight = -1
+        # Z方向线速度惩罚（抑制上下抖动）- 双轮腿需要较强抑制
+        self.rewards.lin_vel_z_l2.weight = -4.0
+        # XY方向角速度惩罚（抑制翻滚/俯仰晃动）- 双轮腿容易翻滚，需加强
+        self.rewards.ang_vel_xy_l2.weight = -1.0
+        # 平坦姿态惩罚（鼓励保持水平）- 双轮腿平衡难度大，需加强
+        self.rewards.flat_orientation_l2.weight = -8.0
+        # 基座高度惩罚（维持目标站立高度）- 加强以维持稳定站姿
+        self.rewards.base_height_l2.weight = -5.0
         self.rewards.base_height_l2.params["target_height"] = 0.32  # 目标高度0.32m
         self.rewards.base_height_l2.params["asset_cfg"].body_names = [self.base_link_name]
-        # 基座线加速度惩罚
-        self.rewards.body_lin_acc_l2.weight = 0
+        # 基座线加速度惩罚（平滑运动）
+        self.rewards.body_lin_acc_l2.weight = -1e-4
         self.rewards.body_lin_acc_l2.params["asset_cfg"].body_names = [self.base_link_name]
 
         # === 关节惩罚 ===
@@ -230,29 +230,35 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.joint_acc_wheel_l2.weight = -2.5e-9
         self.rewards.joint_acc_wheel_l2.params["asset_cfg"].joint_names = self.wheel_joint_names
         # 关节位置限位惩罚（避免触碰关节极限）
-        self.rewards.joint_pos_limits.weight = -1.0
+        self.rewards.joint_pos_limits.weight = -5
         self.rewards.joint_pos_limits.params["asset_cfg"].joint_names = self.leg_joint_names
         # 关节速度限位惩罚
         self.rewards.joint_vel_limits.weight = 0
         self.rewards.joint_vel_limits.params["asset_cfg"].joint_names = self.wheel_joint_names
         # 关节功率惩罚（节能）
-        self.rewards.joint_power.weight = -2e-5
+        self.rewards.joint_power.weight = 0
         self.rewards.joint_power.params["asset_cfg"].joint_names = self.leg_joint_names
-        # 静止时关节运动惩罚（命令为零时保持静止）
-        self.rewards.stand_still.weight = -2.0
+        # 静止时关节运动惩罚（命令为零时保持静止）- 启用以增强静止稳定性
+        self.rewards.stand_still.weight = -0.5
         self.rewards.stand_still.params["asset_cfg"].joint_names = self.leg_joint_names
         # 关节位置偏差惩罚
-        self.rewards.joint_pos_penalty.weight = -0.5
+        self.rewards.joint_pos_penalty.weight = 0
         self.rewards.joint_pos_penalty.params["asset_cfg"].joint_names = self.leg_joint_names
         self.rewards.joint_pos_penalty.params["velocity_threshold"] = 100
         # 轮子速度与地面速度不匹配惩罚（防止打滑）
-        self.rewards.wheel_vel_penalty.weight = -0.01
+        self.rewards.wheel_vel_penalty.weight = 0
         self.rewards.wheel_vel_penalty.params["sensor_cfg"].body_names = [self.foot_link_name]
         self.rewards.wheel_vel_penalty.params["asset_cfg"].joint_names = self.wheel_joint_names
-        # 关节镜像奖励（鼓励左右对称运动）
-        self.rewards.joint_mirror.weight = -0.0
+        # 关节镜像奖励（鼓励左右对称运动）- 禁用，因为 helios_leg 左右关节是反向对称
+        self.rewards.joint_mirror.weight = 0
         self.rewards.joint_mirror.params["mirror_joints"] = [
             ["right_(thigh|calf)_joint", "left_(thigh|calf)_joint"],
+        ]
+        # 反向镜像奖励（左右关节角度符号相反: left = -right）
+        self.rewards.joint_mirror_neg.weight = -0.5
+        self.rewards.joint_mirror_neg.params["mirror_joints"] = [
+            ["right_thigh_joint", "left_thigh_joint"],
+            ["right_calf_joint", "left_calf_joint"],
         ]
 
         # === 动作惩罚 ===
@@ -263,6 +269,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 非期望接触惩罚（除轮子外的接触）
         self.rewards.undesired_contacts.weight = -10.0
         self.rewards.undesired_contacts.params["sensor_cfg"].body_names = [f"^(?!.*{self.foot_link_name}).*"]
+        self.rewards.undesired_contacts.params["threshold"] = 10.0
         # 接触力惩罚（轮子接触力过大）
         self.rewards.contact_forces.weight = 0
         self.rewards.contact_forces.params["sensor_cfg"].body_names = [self.foot_link_name]
@@ -289,10 +296,10 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.feet_contact_without_cmd.weight = 0.0
         self.rewards.feet_contact_without_cmd.params["sensor_cfg"].body_names = [self.foot_link_name]
         # 足部绊倒惩罚
-        self.rewards.feet_stumble.weight = -0.1
+        self.rewards.feet_stumble.weight = 0
         self.rewards.feet_stumble.params["sensor_cfg"].body_names = [self.foot_link_name]
         # 足部滑动惩罚
-        self.rewards.feet_slide.weight = -0.1
+        self.rewards.feet_slide.weight = 0
         self.rewards.feet_slide.params["sensor_cfg"].body_names = [self.foot_link_name]
         self.rewards.feet_slide.params["asset_cfg"].body_names = [self.foot_link_name]
         # 足部高度奖励
@@ -306,8 +313,8 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 步态奖励（左右轮同步）
         self.rewards.feet_gait.weight = 0
         self.rewards.feet_gait.params["synced_feet_pair_names"] = (("left_foot_joint", "right_foot_joint"),)
-        # 保持直立奖励
-        self.rewards.upward.weight = 1.0
+        # 保持直立奖励（正权重，鼓励正立姿态）
+        self.rewards.upward.weight = 2.0
         
 
         # 自动移除权重为0的奖励项（优化性能）
@@ -316,7 +323,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # ------------------------------Terminations 终止条件配置------------------------------
         # 非法接触终止：base_link 和 calf_link 接触地面时终止
-        self.terminations.illegal_contact.params["sensor_cfg"].body_names = [self.base_link_name, ".*_calf_link"]
+        #self.terminations.illegal_contact.params["sensor_cfg"].body_names = [self.base_link_name, ".*_calf_link"]
 
         # ------------------------------Curriculums 课程学习配置------------------------------
         # 禁用线速度命令课程

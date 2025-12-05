@@ -936,10 +936,10 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Helios Leg MuJoCo Deployment')
     parser.add_argument('--model-path', type=str,
-                        default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/helios_leg/mjcf/mjcf.xml',
+                        default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/helios_leg/mjcf/lasted.xml',
                         help='Path to MuJoCo XML model')
     parser.add_argument('--policy-path', type=str,
-                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_flat/2025-12-03_19-50-25/exported/policy.pt',
+                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_flat/2025-12-04_13-57-00/exported/policy.pt',
                         help='Path to trained policy (.pt)')
     parser.add_argument('--duration', type=float, default=120.0, help='Simulation duration [s]')
     parser.add_argument('--dt', type=float, default=0.001, help='Physics timestep [s]')

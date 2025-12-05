@@ -27,7 +27,7 @@ class MyDogFlatEnvCfg(MyDogRoughEnvCfg):
         # 禁用高度扫描
         self.scene.height_scanner = None
         self.observations.policy.height_scan = None
-        self.observations.critic.height_scan = None
+        
         
         # 禁用课程
         self.curriculum.terrain_levels = None

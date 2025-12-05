@@ -18,7 +18,7 @@ class HeliosLegFlatEnvCfg(HeliosLegRoughEnvCfg):
         super().__post_init__()
 
         # override rewards
-        #self.rewards.base_height_l2.params["sensor_cfg"] = None
+        self.rewards.base_height_l2.params["sensor_cfg"] = None
 
         # 强制平面地形
         self.scene.terrain.terrain_type = "plane"

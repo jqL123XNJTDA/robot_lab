@@ -477,6 +477,16 @@ class RewardsCfg:
         },
     )
 
+    # 反向镜像奖励：适用于左右关节在相同姿态时角度符号相反的机器人 (left = -right)
+    joint_mirror_neg = RewTerm(
+        func=mdp.joint_mirror_neg,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "mirror_joints": [["right.*", "left.*"]],
+        },
+    )
+
     action_mirror = RewTerm(
         func=mdp.action_mirror,
         weight=0.0,

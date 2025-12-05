@@ -307,6 +307,42 @@ def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joint
     return reward
 
 
+def joint_mirror_neg(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joints: list[list[str]]) -> torch.Tensor:
+    """惩罚左右关节不满足反向对称 (left = -right) 的情况
+
+    适用于左右关节在相同姿态时角度符号相反的机器人结构。
+    例如：当机器人站直时，左腿 thigh=+30°，右腿 thigh=-30°
+
+    Args:
+        env: ManagerBasedRLEnv 实例
+        asset_cfg: 机器人场景实体配置
+        mirror_joints: 镜像关节对列表，每对包含 [right_joint_regex, left_joint_regex]
+
+    Returns:
+        torch.Tensor: 惩罚值 (batch_size,) - 值越大表示越不对称
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    # 缓存关节索引
+    if not hasattr(env, "joint_mirror_neg_joints_cache") or env.joint_mirror_neg_joints_cache is None:
+        env.joint_mirror_neg_joints_cache = [
+            [asset.find_joints(joint_name) for joint_name in joint_pair] for joint_pair in mirror_joints
+        ]
+    reward = torch.zeros(env.num_envs, device=env.device)
+    # 遍历所有镜像关节对
+    for joint_pair in env.joint_mirror_neg_joints_cache:
+        # 计算 (left + right)² —— 反向对称时 left = -right，所以 left + right = 0
+        diff = torch.sum(
+            torch.square(asset.data.joint_pos[:, joint_pair[0][0]] + asset.data.joint_pos[:, joint_pair[1][0]]),
+            dim=-1,
+        )
+        reward += diff
+    # 平均化
+    reward *= 1 / len(mirror_joints) if len(mirror_joints) > 0 else 0
+    # 重力调制：正立时惩罚生效，倒立时不惩罚
+    reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
+    return reward
+
+
 def action_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joints: list[list[str]]) -> torch.Tensor:
     # extract the used quantities (to enable type-hinting)
     asset: Articulation = env.scene[asset_cfg.name]
@@ -632,10 +668,20 @@ def feet_slide(
 
 
 def upward(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
-    """Penalize z-axis base linear velocity using L2 squared kernel."""
-    # extract the used quantities (to enable type-hinting)
+    """奖励机器人保持直立姿态（重力向量的z分量接近-1）
+
+    注意：这是一个奖励函数，正立时返回值接近1，倾斜/翻倒时返回值接近0。
+    使用时应配合正权重（weight > 0）。
+
+    原理：
+        - 正立时：projected_gravity_b[:, 2] ≈ -1，奖励 = (-(-1))^0.5 / 1 = 1
+        - 倾斜时：projected_gravity_b[:, 2] 接近0，奖励接近0
+        - 翻倒时：projected_gravity_b[:, 2] ≈ +1，奖励 = 0
+    """
     asset: RigidObject = env.scene[asset_cfg.name]
-    reward = torch.square(1 - asset.data.projected_gravity_b[:, 2])
+    # -gravity_z: 正立时=1，翻倒时=-1
+    # clamp到[0,1]：正立时=1，倾斜时<1，翻倒时=0
+    reward = torch.clamp(-asset.data.projected_gravity_b[:, 2], 0.0, 1.0)
     return reward
 
 
