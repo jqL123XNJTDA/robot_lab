@@ -323,7 +323,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # ------------------------------Terminations 终止条件配置------------------------------
         # 非法接触终止：base_link 和 calf_link 接触地面时终止
-        #self.terminations.illegal_contact.params["sensor_cfg"].body_names = [self.base_link_name, ".*_calf_link"]
+        self.terminations.illegal_contact.params["sensor_cfg"].body_names = [self.base_link_name, ".*_calf_link"]
 
         # ------------------------------Curriculums 课程学习配置------------------------------
         # 禁用线速度命令课程
