@@ -293,52 +293,79 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     try:
         # 获取接触力传感器
         contact_sensor = env.unwrapped.scene.sensors["contact_forces"]
-        robot_asset = env.unwrapped.scene["robot"]
-
-        # 监控的刚体名称 (与 illegal_contact 配置一致)
-        # 根据机器人类型自动检测
-        all_body_names = robot_asset.body_names
-
-        # 尝试匹配 base_link 和 calf_link
+        
+        # 【关键修复】使用传感器自己的刚体名称列表来查找索引
+        # sensor.body_names 是传感器实际跟踪的刚体列表
+        sensor_body_names = contact_sensor.body_names  # 传感器跟踪的刚体名称列表
+        
+        # 要监控的刚体模式 (base, calf, foot)
+        monitor_patterns = ["base", "calf", "foot"]
         monitor_body_names = []
         monitor_body_ids = []
-
-        # 查找 base_link
-        for name in all_body_names:
-            if "base" in name.lower():
-                body_ids = robot_asset.find_bodies(name)[0]
-                if isinstance(body_ids, torch.Tensor):
-                    monitor_body_ids.append(body_ids.item())
-                else:
-                    monitor_body_ids.append(int(body_ids[0]))
-                monitor_body_names.append(name)
-                break
-
-        # 查找所有 calf_link
-        for name in all_body_names:
-            if "calf" in name.lower():
-                body_ids = robot_asset.find_bodies(name)[0]
-                if isinstance(body_ids, torch.Tensor):
-                    monitor_body_ids.append(body_ids.item())
-                else:
-                    monitor_body_ids.append(int(body_ids[0]))
-                monitor_body_names.append(name)
+        
+        # 在传感器的刚体列表中查找匹配的刚体
+        for sensor_idx, sensor_body_name in enumerate(sensor_body_names):
+            for pattern in monitor_patterns:
+                if pattern in sensor_body_name.lower():
+                    monitor_body_ids.append(sensor_idx)  # 使用传感器的索引！
+                    monitor_body_names.append(sensor_body_name)
+                    break  # 一个刚体只匹配一次
 
         if len(monitor_body_ids) > 0:
             contact_force_monitor = {
                 "sensor": contact_sensor,
                 "body_ids": torch.tensor(monitor_body_ids, dtype=torch.long, device=env.unwrapped.device),
                 "body_names": monitor_body_names,
-                "threshold": 1.0,  # 与 illegal_contact 阈值一致
+                "threshold": 10.0,  # base/calf 检测超过10N的接触
+                "foot_threshold": 150.0,  # foot 检测超过150N的接触
                 "print_interval": 50,  # 每50步打印一次统计
                 "step_counter": 0,
             }
             print(f"[INFO] 接触力监控启用: {monitor_body_names}")
+            print(f"[INFO] 传感器跟踪的刚体数量: {len(sensor_body_names)}")
+            print(f"[INFO] 监控的刚体索引: {monitor_body_ids}")
             print(f"[INFO] 接触力阈值: {contact_force_monitor['threshold']} N")
         else:
-            print("[WARN] 未找到 base_link 或 calf_link，接触力监控未启用")
+            print(f"[WARN] 在传感器刚体列表中未找到 base/calf，接触力监控未启用")
+            print(f"[DEBUG] 传感器跟踪的刚体: {sensor_body_names}")
     except Exception as exc:
         print(f"[WARN] 接触力监控初始化失败: {exc}")
+        import traceback
+        traceback.print_exc()
+    # ====================================
+
+    # ========== Base Link 高度监控 ==========
+    base_height_monitor = None
+    try:
+        robot_asset = env.unwrapped.scene["robot"]
+        all_body_names = robot_asset.body_names
+        
+        # 查找 base_link
+        base_link_name = None
+        base_link_id = None
+        for name in all_body_names:
+            if "base" in name.lower():
+                base_link_name = name
+                body_id = robot_asset.find_bodies(name)[0]
+                if isinstance(body_id, torch.Tensor):
+                    base_link_id = body_id.item()
+                else:
+                    base_link_id = int(body_id[0])
+                break
+        
+        if base_link_name is not None:
+            base_height_monitor = {
+                "asset": robot_asset,
+                "body_id": base_link_id,
+                "body_name": base_link_name,
+                "print_interval": 50,  # 每50步打印一次
+                "step_counter": 0,
+            }
+            print(f"[INFO] Base Link 高度监控启用: {base_link_name}")
+        else:
+            print("[WARN] 未找到 base_link，高度监控未启用")
+    except Exception as exc:
+        print(f"[WARN] Base Link 高度监控初始化失败: {exc}")
     # ====================================
 
     # simulate environment
@@ -427,6 +454,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 body_ids = contact_force_monitor["body_ids"]
                 body_names = contact_force_monitor["body_names"]
                 threshold = contact_force_monitor["threshold"]
+                foot_threshold = contact_force_monitor["foot_threshold"]
 
                 # 获取接触力 (num_envs, history_len, num_bodies, 3)
                 # 只取最新一帧 [:, -1, ...]
@@ -434,14 +462,21 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 # 计算力的模长 (num_envs, num_bodies)
                 force_magnitude = torch.norm(net_forces, dim=-1).detach().cpu()
 
-                # 检测超过阈值的接触
-                exceeds_threshold = force_magnitude > threshold
+                # 根据刚体类型使用不同阈值检测超限
+                # foot 使用 foot_threshold (150N), 其他使用 threshold (10N)
+                exceeds_threshold = torch.zeros_like(force_magnitude, dtype=torch.bool)
+                for i, name in enumerate(body_names):
+                    if "foot" in name.lower():
+                        exceeds_threshold[:, i] = force_magnitude[:, i] > foot_threshold
+                    else:
+                        exceeds_threshold[:, i] = force_magnitude[:, i] > threshold
 
                 # 实时打印超限警告 (只打印 Env 0)
                 if exceeds_threshold[0].any():
                     for i, name in enumerate(body_names):
                         if exceeds_threshold[0, i]:
-                            print(f"[CONTACT][Step {timestep}] Env 0 {name} 接触力超限: {force_magnitude[0, i]:.2f} N > {threshold} N")
+                            curr_threshold = foot_threshold if "foot" in name.lower() else threshold
+                            print(f"[CONTACT][Step {timestep}] Env 0 {name} 接触力超限: {force_magnitude[0, i]:.2f} N > {curr_threshold} N")
 
                 # 定期打印统计信息
                 if contact_force_monitor["step_counter"] % contact_force_monitor["print_interval"] == 0:
@@ -449,12 +484,39 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     num_exceeds = exceeds_threshold.sum(dim=0)  # (num_bodies,)
                     total_envs = force_magnitude.shape[0]
 
-                    print(f"[INFO][Step {timestep}] 接触力统计 (阈值={threshold}N):")
+                    print(f"[INFO][Step {timestep}] 接触力统计 (base/calf阈值={threshold}N, foot阈值={foot_threshold}N):")
                     for i, name in enumerate(body_names):
                         mean_force = force_magnitude[:, i].mean().item()
                         max_force = force_magnitude[:, i].max().item()
                         exceed_ratio = num_exceeds[i].item() / total_envs * 100
-                        print(f"  {name}: mean={mean_force:.2f}N, max={max_force:.2f}N, 超限率={exceed_ratio:.1f}%")
+                        curr_threshold = foot_threshold if "foot" in name.lower() else threshold
+                        print(f"  {name}: mean={mean_force:.2f}N, max={max_force:.2f}N, 超限率={exceed_ratio:.1f}% (>{curr_threshold}N)")
+            # ====================================
+
+            # ========== Base Link 高度打印 ==========
+            if base_height_monitor is not None:
+                base_height_monitor["step_counter"] += 1
+                if base_height_monitor["step_counter"] % base_height_monitor["print_interval"] == 0:
+                    monitor_asset = base_height_monitor["asset"]
+                    body_id = base_height_monitor["body_id"]
+                    body_name = base_height_monitor["body_name"]
+
+                    # 获取 base_link 的世界坐标位置 (num_envs, 3)
+                    base_pos_w = monitor_asset.data.body_pos_w[:, body_id, :]
+                    # 提取 Z 轴高度 (num_envs,)
+                    base_heights = base_pos_w[:, 2].detach().cpu()
+
+                    # 打印 Env 0 的高度
+                    env0_height = base_heights[0].item()
+                    
+                    # 打印所有环境的统计信息
+                    mean_height = base_heights.mean().item()
+                    max_height = base_heights.max().item()
+                    min_height = base_heights.min().item()
+                    
+                    print(f"[INFO][Step {timestep}] {body_name} 高度: "
+                          f"Env0={env0_height:.3f}m, mean={mean_height:.3f}m, "
+                          f"min={min_height:.3f}m, max={max_height:.3f}m")
             # ====================================
 
         timestep += 1  # 始终递增 timestep 用于调试
