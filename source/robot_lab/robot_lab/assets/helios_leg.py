@@ -28,7 +28,7 @@ from robot_lab.assets import ISAACLAB_ASSETS_DATA_DIR
 
 
 # URDF file path
-HELIOS_LEG_URDF_PATH = f"{ISAACLAB_ASSETS_DATA_DIR}/Robots/helios_leg/urdf/LW-360 Gen2V1.urdf"
+HELIOS_LEG_URDF_PATH = f"{ISAACLAB_ASSETS_DATA_DIR}/Robots/helios_leg/urdf/helios_leg.urdf"
 
 
 # ArticulationCfg: describes how to instantiate and drive the robot in simulation
@@ -83,37 +83,37 @@ HELIOS_LEG_CFG = ArticulationCfg(
     ),
 
     # soft joint position limit factor
-    soft_joint_pos_limit_factor=0.9,
+    soft_joint_pos_limit_factor=0.95,
 
     # actuators: define which joints are controlled by which actuator groups
     actuators={
         # thigh: thigh joints use DC motor model (position control)
         "thigh": DCMotorCfg(
             joint_names_expr=[".*_thigh_joint"],
-            effort_limit=40.0,       # from URDF effort limit
-            saturation_effort=40.0,
-            velocity_limit=17.0,     # from URDF velocity limit
-            stiffness=80.0,          # PD control stiffness
-            damping=4.0,             # PD control damping
+            effort_limit=120.0,
+            saturation_effort=120.0,
+            velocity_limit=17.48,
+            stiffness=100.0,
+            damping=5.0,
             friction=0.0,
         ),
         # calf: calf joints use DC motor model (position control)
         "calf": DCMotorCfg(
             joint_names_expr=[".*_calf_joint"],
-            effort_limit=40.0,
-            saturation_effort=40.0,
-            velocity_limit=17.0,
-            stiffness=80.0,
-            damping=4.0,
+            effort_limit=120.0,
+            saturation_effort=120.0,
+            velocity_limit=17.48,
+            stiffness=100.0,
+            damping=5.0,
             friction=0.0,
         ),
         # wheel: wheel joints use implicit actuator (velocity control)
         "wheel": ImplicitActuatorCfg(
             joint_names_expr=[".*_foot_joint"],
-            effort_limit_sim=40.0,
-            velocity_limit_sim=17.0,
-            stiffness=0.0,           # velocity control mode, stiffness=0
-            damping=2.0,             # damping controls velocity tracking
+            effort_limit_sim=60.0,
+            velocity_limit_sim=16.956,
+            stiffness=0.0,
+            damping=1.0,
             friction=0.0,
         ),
     },

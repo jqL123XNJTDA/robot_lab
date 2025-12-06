@@ -1165,3 +1165,117 @@ def handstand_undesired_contacts(
     reward = torch.sum(is_contact, dim=1).float()
     # 注意：这里没有重力系数调制，倒立时惩罚不会被缩小
     return reward
+
+
+def feet_x_alignment_l2(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """惩罚左右 foot 在基座坐标系 X 方向上不对齐（不并列）
+
+    计算左右 foot 在基座坐标系中 X 坐标的差值平方。
+    当两个 foot 在 X 方向上完全并列时，惩罚为 0。
+
+    Args:
+        env: ManagerBasedRLEnv 实例
+        asset_cfg: 机器人场景实体配置，body_ids 应包含左右 foot 的刚体索引
+
+    Returns:
+        torch.Tensor: 惩罚值 (batch_size,) - X坐标差越大惩罚越大
+
+    适用场景:
+        双轮腿机器人，希望左右轮在 X 方向上保持并列
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    # 获取 foot 位置（世界坐标系）(batch_size, num_feet, 3)
+    feet_pos_w = asset.data.body_pos_w[:, asset_cfg.body_ids, :]
+
+    # 获取 num_feet（兼容 list 和 slice 类型的 body_ids）
+    num_feet = feet_pos_w.shape[1]
+
+    # 获取基座位置（世界坐标系）(batch_size, 3)
+    base_pos_w = asset.data.root_pos_w
+
+    # 计算 foot 相对于基座的位置（世界坐标系）(batch_size, num_feet, 3)
+    feet_pos_rel_w = feet_pos_w - base_pos_w.unsqueeze(1)
+
+    # 将相对位置转换到基座坐标系 (batch_size, num_feet, 3)
+    # 使用批量四元数变换，避免 for 循环
+    # quat_apply_inverse 需要 (batch, 4) 和 (batch, 3)，所以需要扩展维度
+    root_quat_expanded = asset.data.root_quat_w.unsqueeze(1).expand(-1, num_feet, -1)  # (batch, num_feet, 4)
+    feet_pos_b = math_utils.quat_apply_inverse(
+        root_quat_expanded.reshape(-1, 4),
+        feet_pos_rel_w.reshape(-1, 3)
+    ).reshape(env.num_envs, num_feet, 3)
+
+    # 提取 X 坐标 (batch_size, num_feet)
+    feet_x_b = feet_pos_b[:, :, 0]
+
+    # 计算左右 foot X 坐标差的平方
+    # 对于2个 foot: (x_right - x_left)^2
+    if num_feet == 2:
+        reward = torch.square(feet_x_b[:, 0] - feet_x_b[:, 1])
+    else:
+        # 多个 foot 时，计算所有 foot X 坐标的方差
+        reward = torch.var(feet_x_b, dim=1)
+
+    # 重力调制：正立时惩罚生效
+    reward *= torch.clamp(-asset.data.projected_gravity_b[:, 2], 0.0, 0.7) / 0.7
+
+    return reward
+
+
+def feet_x_offset_l2(
+    env: ManagerBasedRLEnv,
+    target_x: float = 0.0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """惩罚 foot 在基座坐标系 X 方向上偏离目标位置
+
+    计算所有 foot 在基座坐标系中 X 坐标与目标值的偏差平方和。
+    当 foot 的 X 坐标等于 target_x 时，惩罚为 0。
+
+    Args:
+        env: ManagerBasedRLEnv 实例
+        target_x: 目标 X 坐标值 [m]，默认为 0（基座正下方）
+                  对于 Helios Leg，根据 URDF 几何，合理值约为 -0.26m（轮子在基座后方）
+        asset_cfg: 机器人场景实体配置，body_ids 应包含 foot 的刚体索引
+
+    Returns:
+        torch.Tensor: 惩罚值 (batch_size,) - X坐标偏离目标越大惩罚越大
+
+    适用场景:
+        双轮腿机器人，希望轮子保持在特定 X 位置（如基座正下方或略后方）
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    # 获取 foot 位置（世界坐标系）(batch_size, num_feet, 3)
+    feet_pos_w = asset.data.body_pos_w[:, asset_cfg.body_ids, :]
+
+    # 获取 num_feet（兼容 list 和 slice 类型的 body_ids）
+    num_feet = feet_pos_w.shape[1]
+
+    # 获取基座位置（世界坐标系）(batch_size, 3)
+    base_pos_w = asset.data.root_pos_w
+
+    # 计算 foot 相对于基座的位置（世界坐标系）(batch_size, num_feet, 3)
+    feet_pos_rel_w = feet_pos_w - base_pos_w.unsqueeze(1)
+
+    # 将相对位置转换到基座坐标系 (batch_size, num_feet, 3)
+    root_quat_expanded = asset.data.root_quat_w.unsqueeze(1).expand(-1, num_feet, -1)
+    feet_pos_b = math_utils.quat_apply_inverse(
+        root_quat_expanded.reshape(-1, 4),
+        feet_pos_rel_w.reshape(-1, 3)
+    ).reshape(env.num_envs, num_feet, 3)
+
+    # 提取 X 坐标 (batch_size, num_feet)
+    feet_x_b = feet_pos_b[:, :, 0]
+
+    # 计算所有 foot X 坐标与目标值的偏差平方和
+    reward = torch.sum(torch.square(feet_x_b - target_x), dim=1)
+
+    # 重力调制：正立时惩罚生效
+    reward *= torch.clamp(-asset.data.projected_gravity_b[:, 2], 0.0, 0.7) / 0.7
+
+    return reward

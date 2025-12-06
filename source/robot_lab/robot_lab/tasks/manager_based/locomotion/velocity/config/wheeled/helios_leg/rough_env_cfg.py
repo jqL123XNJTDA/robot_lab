@@ -97,6 +97,20 @@ class HeliosLegRewardsCfg(RewardsCfg):
         params={"std": 0.5, "command_name": "base_velocity"},
     )
 
+    # 左右 foot X 方向对齐惩罚（使左右轮并列）
+    feet_x_alignment_l2 = RewTerm(
+        func=mdp.feet_x_alignment_l2,
+        weight=0.0,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=".*_foot_link")},
+    )
+
+    # foot X 方向偏移惩罚（使轮子保持在目标 X 位置）
+    feet_x_offset_l2 = RewTerm(
+        func=mdp.feet_x_offset_l2,
+        weight=0.0,
+        params={"target_x": 0.0, "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot_link")},
+    )
+
 
 @configclass
 class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
@@ -193,18 +207,18 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # ------------------------------Rewards 奖励配置------------------------------
         # === 通用奖励 ===
         # 终止惩罚（摔倒等）
-        self.rewards.is_terminated.weight = -200
+        self.rewards.is_terminated.weight = 0
 
         # === 基座/根部惩罚 ===
         # Z方向线速度惩罚（抑制上下抖动）- 双轮腿需要较强抑制
-        self.rewards.lin_vel_z_l2.weight = -4.0
+        self.rewards.lin_vel_z_l2.weight = -0.1
         # XY方向角速度惩罚（抑制翻滚/俯仰晃动）- 双轮腿容易翻滚，需加强
-        self.rewards.ang_vel_xy_l2.weight = -1.0
+        self.rewards.ang_vel_xy_l2.weight = -0.05
         # 平坦姿态惩罚（鼓励保持水平）- 双轮腿平衡难度大，需加强
-        self.rewards.flat_orientation_l2.weight = -8.0
+        self.rewards.flat_orientation_l2.weight = -5.0
         # 基座高度惩罚（维持目标站立高度）- 加强以维持稳定站姿
         self.rewards.base_height_l2.weight = -5.0
-        self.rewards.base_height_l2.params["target_height"] = 0.32  # 目标高度0.32m
+        self.rewards.base_height_l2.params["target_height"] = 0.4  # 目标高度0.4m
         self.rewards.base_height_l2.params["asset_cfg"].body_names = [self.base_link_name]
         # 基座线加速度惩罚（平滑运动）
         self.rewards.body_lin_acc_l2.weight = -1e-4
@@ -255,7 +269,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             ["right_(thigh|calf)_joint", "left_(thigh|calf)_joint"],
         ]
         # 反向镜像奖励（左右关节角度符号相反: left = -right）
-        self.rewards.joint_mirror_neg.weight = -0.5
+        self.rewards.joint_mirror_neg.weight = -1
         self.rewards.joint_mirror_neg.params["mirror_joints"] = [
             ["right_thigh_joint", "left_thigh_joint"],
             ["right_calf_joint", "left_calf_joint"],
@@ -267,7 +281,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # === 接触传感器相关 ===
         # 非期望接触惩罚（除轮子外的接触）
-        self.rewards.undesired_contacts.weight = -10.0
+        self.rewards.undesired_contacts.weight = -5.0
         self.rewards.undesired_contacts.params["sensor_cfg"].body_names = [f"^(?!.*{self.foot_link_name}).*"]
         self.rewards.undesired_contacts.params["threshold"] = 10.0
         # 接触力惩罚（轮子接触力过大）
@@ -315,6 +329,16 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.feet_gait.params["synced_feet_pair_names"] = (("left_foot_joint", "right_foot_joint"),)
         # 保持直立奖励（正权重，鼓励正立姿态）
         self.rewards.upward.weight = 2.0
+
+        # === Foot 位置奖励 ===
+        # 左右 foot X 方向对齐惩罚（使左右轮在 X 方向上并列）
+        self.rewards.feet_x_alignment_l2.weight = -2.0
+        self.rewards.feet_x_alignment_l2.params["asset_cfg"].body_names = [self.foot_link_name]
+        # foot X 方向偏移惩罚（使轮子保持在目标 X 位置）
+        # target_x=0 表示轮子应在基座正下方；根据 URDF 几何可调整为其他值
+        self.rewards.feet_x_offset_l2.weight = -2.0
+        self.rewards.feet_x_offset_l2.params["target_x"] = 0.0
+        self.rewards.feet_x_offset_l2.params["asset_cfg"].body_names = [self.foot_link_name]
         
 
         # 自动移除权重为0的奖励项（优化性能）
@@ -323,7 +347,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # ------------------------------Terminations 终止条件配置------------------------------
         # 非法接触终止：base_link 和 calf_link 接触地面时终止
-        self.terminations.illegal_contact.params["sensor_cfg"].body_names = [self.base_link_name, ".*_calf_link"]
+        self.terminations.illegal_contact = None
 
         # ------------------------------Curriculums 课程学习配置------------------------------
         # 禁用线速度命令课程
