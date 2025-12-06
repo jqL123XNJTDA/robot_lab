@@ -84,8 +84,8 @@ class MyDogHistFlatEnvCfg(MyDogHistRoughEnvCfg):
         
         # 禁用高度扫描（Flat 环境不需要）
         self.scene.height_scanner = None
-        # 注意：HIM 版本的 height_scan 在 height_scan_group 中
-        # 这里只是禁用了 scanner，Runner 会根据 obs_groups 配置决定是否使用
+        # HIM 版本的 height_scan 在 height_scan_group 中，直接禁用整个组
+        self.observations.height_scan_group = None
         
         # 禁用地形课程
         self.curriculum.terrain_levels = None

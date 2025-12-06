@@ -287,7 +287,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     dt = env.unwrapped.step_dt
 
     # reset environment
-    obs = env.get_observations()
+    obs_dict = env.get_observations()
     timestep = 0
     
     print("\n🎮 Starting simulation...")
@@ -299,10 +299,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         start_time = time.time()
         # run everything in inference mode
         with torch.inference_mode():
+            # 从 TensorDict 中提取 policy 观测
+            if isinstance(obs_dict, TensorDict):
+                obs = obs_dict['policy']
+            else:
+                obs = obs_dict
             # agent stepping
             actions = policy(obs)
             # env stepping
-            obs, _, _, _ = env.step(actions)
+            obs_dict, _, _, _ = env.step(actions)
         
         if args_cli.video:
             timestep += 1
