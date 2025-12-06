@@ -293,10 +293,10 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.track_lin_vel_xy_exp.weight = 0
         # 禁用Y方向线速度跟踪（双轮腿机器人没有髋关节，不能侧向移动）
         self.rewards.track_lin_vel_y_exp.weight = 0
-        # X方向线速度跟踪奖励（双轮腿机器人只能前后移动，主要奖励项）
-        self.rewards.track_lin_vel_x_exp.weight = 10.0
-        # Z方向角速度跟踪奖励（转向）
-        self.rewards.track_ang_vel_z_exp.weight = 6.5
+        # X方向线速度跟踪奖励（暂时禁用，先专注平衡）
+        self.rewards.track_lin_vel_x_exp.weight = 0
+        # Z方向角速度跟踪奖励（暂时禁用，先专注平衡）
+        self.rewards.track_ang_vel_z_exp.weight = 0
 
         # === 其他奖励 ===
         # 足部腾空时间奖励（对轮腿机器人通常禁用）
@@ -356,9 +356,9 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.curriculum.command_levels_ang_vel = None
 
         # ------------------------------Commands 命令配置------------------------------
-        # X方向线速度命令范围 (m/s)
-        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
+        # X方向线速度命令范围 (m/s) - 暂时禁用，先专注平衡
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
         # Y方向线速度命令范围 (m/s)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
-        # Z方向角速度命令范围 (rad/s)
-        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+        # Z方向角速度命令范围 (rad/s) - 暂时禁用，先专注平衡
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
