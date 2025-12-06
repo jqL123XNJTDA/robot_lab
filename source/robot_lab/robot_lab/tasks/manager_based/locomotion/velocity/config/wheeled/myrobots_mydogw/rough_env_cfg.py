@@ -376,13 +376,13 @@ class MyDogHistRewardWeights:
     # 速度跟踪奖励（主要目标）
     track_lin_vel_xy_exp: float = 6.0
     track_ang_vel_z_exp: float = 3.0
-    upward: float = 2.0
+    upward: float = 0.0
     
     # 根部惩罚
     lin_vel_z_l2: float = -2.0
     ang_vel_xy_l2: float = -0.05
-    flat_orientation_l2: float = 0.1
-    base_height_l2: float = 0.0
+    flat_orientation_l2: float = -1
+    base_height_l2: float = -2
     body_lin_acc_l2: float = 0.0
     
     # 关节惩罚
@@ -404,14 +404,14 @@ class MyDogHistRewardWeights:
     action_rate_l2: float = -0.01
     
     # 接触惩罚
-    undesired_contacts: float = -1.0
+    undesired_contacts: float = -5.0
     contact_forces: float = -6e-4
     
     # 其他奖励
     feet_air_time: float = 0.0
     feet_contact: float = 0.0
     feet_contact_without_cmd: float = 0.1
-    feet_stumble: float = -5.0
+    feet_stumble: float = 0.0
     feet_slide: float = 0.0
     feet_height: float = 0.0
     feet_height_body: float = 0.0
