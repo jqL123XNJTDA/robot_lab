@@ -338,28 +338,28 @@ class MyDogRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 class MyDogHistCommandParams:
     """HIM 版本的命令参数"""
     # 速度命令范围
-    lin_vel_x: tuple = (-1.0, 1.0)
-    lin_vel_y: tuple = (-1.0, 1.0)
-    ang_vel_z: tuple = (-1.0, 1.0)
+    lin_vel_x: tuple = (0.0,0.0)
+    lin_vel_y: tuple = (0.0,0.0)
+    ang_vel_z: tuple = (0, 0.0)
 
 
 @configclass
 class MyDogHistEventParams:
     """HIM 版本的事件随机化参数"""
     # 复位基座随机化
-    reset_base_pose_range_x: tuple = (-0.5, 0.5)
-    reset_base_pose_range_y: tuple = (-0.5, 0.5)
-    reset_base_pose_range_z: tuple = (0.0, 0.2)
-    reset_base_pose_range_roll: tuple = (-3.14, 3.14)
-    reset_base_pose_range_pitch: tuple = (-3.14, 3.14)
-    reset_base_pose_range_yaw: tuple = (-3.14, 3.14)
+    reset_base_pose_range_x: tuple = (0, 0)
+    reset_base_pose_range_y: tuple = (0, 0)
+    reset_base_pose_range_z: tuple = (0, 0.2)
+    reset_base_pose_range_roll: tuple = (0, 0)
+    reset_base_pose_range_pitch: tuple = (0, 0)
+    reset_base_pose_range_yaw: tuple = (0, 0)
 
-    reset_base_velocity_range_x: tuple = (-0.5, 0.5)
-    reset_base_velocity_range_y: tuple = (-0.5, 0.5)
-    reset_base_velocity_range_z: tuple = (-0.5, 0.5)
-    reset_base_velocity_range_roll: tuple = (-0.5, 0.5)
-    reset_base_velocity_range_pitch: tuple = (-0.5, 0.5)
-    reset_base_velocity_range_yaw: tuple = (-0.5, 0.5)
+    reset_base_velocity_range_x: tuple = (0, 0.5)
+    reset_base_velocity_range_y: tuple = (0, 0)
+    reset_base_velocity_range_z: tuple = (0, 0)
+    reset_base_velocity_range_roll: tuple = (0, 0)
+    reset_base_velocity_range_pitch: tuple = (0, 0)
+    reset_base_velocity_range_yaw: tuple = (0, 0)
 
     # 外力/力矩随机化 - 与父类一致，初期训练不宜过大
     external_force_range: tuple = (-10.0, 10.0)
@@ -382,7 +382,7 @@ class MyDogHistRewardWeights:
     lin_vel_z_l2: float = -2.0
     ang_vel_xy_l2: float = -0.05
     flat_orientation_l2: float = 0.0
-    base_height_l2: float = 0.0  # 高度惩罚
+    base_height_l2: float = -2  # 高度惩罚
     body_lin_acc_l2: float = 0.0
 
     # 关节惩罚
@@ -404,7 +404,7 @@ class MyDogHistRewardWeights:
     action_rate_l2: float = -0.01
 
     # 接触惩罚
-    undesired_contacts: float = -8.0
+    undesired_contacts: float = -5.0
     contact_forces: float = -6e-4
 
     # 其他奖励 - 全部禁用
