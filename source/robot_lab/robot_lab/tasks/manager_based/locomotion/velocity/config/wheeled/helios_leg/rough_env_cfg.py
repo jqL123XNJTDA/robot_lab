@@ -218,9 +218,9 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # === 基座/根部惩罚 ===
         # Z方向线速度惩罚（抑制上下抖动）- 双轮腿需要较强抑制
-        self.rewards.lin_vel_z_l2.weight = -5
+        self.rewards.lin_vel_z_l2.weight = -2
         # XY方向角速度惩罚（抑制翻滚/俯仰晃动）- 双轮腿容易翻滚，需加强
-        self.rewards.ang_vel_xy_l2.weight = -2
+        self.rewards.ang_vel_xy_l2.weight = -0.05
         # 平坦姿态惩罚（鼓励保持水平）- 双轮腿平衡难度大，需加强
         self.rewards.flat_orientation_l2.weight = -20
         # 基座高度惩罚（禁用，改用 base_height_reward）
