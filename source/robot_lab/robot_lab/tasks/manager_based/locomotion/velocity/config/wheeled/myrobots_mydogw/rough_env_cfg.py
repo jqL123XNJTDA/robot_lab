@@ -368,49 +368,49 @@ class MyDogHistEventParams:
 
 @configclass
 class MyDogHistRewardWeights:
-    """HIM 版本的奖励权重配置 - 参考 HIMLoco 论文调整"""
+    """HIM 版本的奖励权重配置 - 禁用速度跟踪，专注站立平衡"""
 
     # 通用
-    is_terminated: float = 0.0
+    is_terminated: float = -200
 
-    # 速度跟踪奖励（主要目标）
-    track_lin_vel_xy_exp: float = 1.0
-    track_ang_vel_z_exp: float = 0.5
-    upward: float = 1.0  # 【关键】直立奖励，防止机器人蠕动
+    # 速度跟踪奖励 - 全部禁用
+    track_lin_vel_xy_exp: float = 0.0
+    track_ang_vel_z_exp: float = 0.0
+    upward: float = 3.0  # 【关键】直立奖励，防止机器人蠕动
 
     # 根部惩罚
     lin_vel_z_l2: float = -2.0
     ang_vel_xy_l2: float = -0.05
-    flat_orientation_l2: float = 0.0  # 与 MyDogFlatEnvCfg 一致，Rough 地形设为 0
-    base_height_l2: float = -5  # 禁用，用 upward 替代
+    flat_orientation_l2: float = 0.0
+    base_height_l2: float = 0.0  # 高度惩罚
     body_lin_acc_l2: float = 0.0
-    
+
     # 关节惩罚
     joint_torques_l2: float = -1e-5
     joint_torques_wheel_l2: float = 0.0
     joint_vel_l2: float = 0.0
     joint_vel_wheel_l2: float = 0.0
     joint_acc_l2: float = -2.5e-7
-    joint_acc_wheel_l2: float = 0
+    joint_acc_wheel_l2: float = 0.0
     joint_pos_limits: float = -4.0
     joint_vel_limits: float = 0.0
     joint_power: float = -2e-5
-    stand_still: float = -2.0
-    joint_pos_penalty: float = -1.0
+    stand_still: float = 0.0  # 禁用，因为没有速度命令
+    joint_pos_penalty: float = 0.0  # 禁用，因为没有速度命令
     wheel_vel_penalty: float = 0.0
-    joint_mirror: float = -0.0
-    
+    joint_mirror: float = 0.0
+
     # 动作惩罚
     action_rate_l2: float = -0.01
-    
+
     # 接触惩罚
-    undesired_contacts: float = -20.0
+    undesired_contacts: float = -8.0
     contact_forces: float = -6e-4
-    
-    # 其他奖励
+
+    # 其他奖励 - 全部禁用
     feet_air_time: float = 0.0
     feet_contact: float = 0.0
-    feet_contact_without_cmd: float = 0.1
+    feet_contact_without_cmd: float = 0.0  # 禁用，因为没有速度命令
     feet_stumble: float = 0.0
     feet_slide: float = 0.0
     feet_height: float = 0.0
@@ -786,9 +786,9 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.events.randomize_com_positions.params["asset_cfg"].body_names = [self.base_link_name]
         
         # 外力/力矩随机化
-        self.events.randomize_apply_external_force_torque.params["asset_cfg"].body_names = [self.base_link_name]
-        self.events.randomize_apply_external_force_torque.params["force_range"] = e.external_force_range
-        self.events.randomize_apply_external_force_torque.params["torque_range"] = e.external_torque_range
+        #self.events.randomize_apply_external_force_torque.params["asset_cfg"].body_names = [self.base_link_name]
+        #self.events.randomize_apply_external_force_torque.params["force_range"] = e.external_force_range
+        #self.events.randomize_apply_external_force_torque.params["torque_range"] = e.external_torque_range
 
         # ------------------------------Rewards------------------------------
         w = self.reward_weights
@@ -883,10 +883,11 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             self.disable_zero_weight_rewards()
 
         # ------------------------------Terminations------------------------------
-        self.terminations.illegal_contact = None
+        self.terminations.illegal_contact.params["sensor_cfg"].body_names = [self.base_link_name]
 
         # ------------------------------Curriculum------------------------------
-        # 禁用所有课程学习（与 MyDogRoughEnvCfg 一致，先专注基础训练）
+        # 禁用所有课程学习
+        self.curriculum.terrain_levels = None
         self.curriculum.command_levels = None
         self.curriculum.command_levels_lin_vel = None
         self.curriculum.command_levels_ang_vel = None
@@ -895,7 +896,8 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.curriculum.com_randomization_levels = None
 
         # ------------------------------Commands------------------------------
-        c = self.command_params
-        self.commands.base_velocity.ranges.lin_vel_x = c.lin_vel_x
-        self.commands.base_velocity.ranges.lin_vel_y = c.lin_vel_y
-        self.commands.base_velocity.ranges.ang_vel_z = c.ang_vel_z
+        # 禁用速度命令（设置为零范围）
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)

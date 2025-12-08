@@ -290,10 +290,44 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     obs_dict = env.get_observations()
     timestep = 0
     
+    # ========== Base Link 接触力监控初始化 ==========
+    contact_monitor = None
+    try:
+        contact_sensor = env.unwrapped.scene.sensors["contact_forces"]
+        sensor_body_names = contact_sensor.body_names
+
+        # 查找 base_link 在传感器中的索引
+        base_idx = None
+        base_name = None
+        for i, name in enumerate(sensor_body_names):
+            if "base" in name.lower():
+                base_idx = i
+                base_name = name
+                break
+
+        if base_idx is not None:
+            num_envs = env.unwrapped.num_envs
+            contact_monitor = {
+                "sensor": contact_sensor,
+                "base_idx": base_idx,
+                "base_name": base_name,
+                "threshold": 10.0,  # 超过 10N 视为接触
+                "print_interval": 50,
+                # 记录统计周期内的最大值
+                "max_force_in_period": torch.zeros(num_envs),
+                "exceed_count_in_period": 0,
+            }
+            print(f"[INFO] Base Link 接触力监控启用: {base_name} (索引: {base_idx})")
+        else:
+            print("[WARN] 未找到 base_link，接触力监控未启用")
+    except Exception as e:
+        print(f"[WARN] 接触力监控初始化失败: {e}")
+    # ================================================
+
     print("\n🎮 Starting simulation...")
     print("   Press Ctrl+C to stop")
     print()
-    
+
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
@@ -308,9 +342,66 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             actions = policy(obs)
             # env stepping
             obs_dict, _, _, _ = env.step(actions)
-        
+
+            # ========== Base Link 接触力打印 ==========
+            if contact_monitor is not None:
+                sensor = contact_monitor["sensor"]
+                base_idx = contact_monitor["base_idx"]
+                base_name = contact_monitor["base_name"]
+                threshold = contact_monitor["threshold"]
+
+                # 获取接触力 (num_envs, history_len, num_bodies, 3)
+                net_forces = sensor.data.net_forces_w_history[:, -1, base_idx, :]
+                # 计算力的模长 (num_envs,)
+                force_magnitude = torch.norm(net_forces, dim=-1).detach().cpu()
+
+                # 累积周期内最大值
+                contact_monitor["max_force_in_period"] = torch.max(
+                    contact_monitor["max_force_in_period"], force_magnitude
+                )
+                # 累积超限次数
+                if (force_magnitude > threshold).any():
+                    contact_monitor["exceed_count_in_period"] += (force_magnitude > threshold).sum().item()
+
+                # 实时打印超限警告 (Env 0)
+                if force_magnitude[0] > threshold:
+                    print(f"[CONTACT][Step {timestep}] Env 0 {base_name} 接触力: {force_magnitude[0]:.2f} N")
+
+                # 定期打印统计信息（使用周期内累积的最大值）
+                if timestep % contact_monitor["print_interval"] == 0 and timestep > 0:
+                    max_in_period = contact_monitor["max_force_in_period"]
+                    mean_max = max_in_period.mean().item()
+                    max_max = max_in_period.max().item()
+                    exceed_count = contact_monitor["exceed_count_in_period"]
+                    total_envs = force_magnitude.shape[0]
+                    print(f"[INFO][Step {timestep}] {base_name} 接触力(周期最大): "
+                          f"Env0={max_in_period[0]:.2f}N, mean={mean_max:.2f}N, "
+                          f"max={max_max:.2f}N, 超限次数={exceed_count}")
+                    # 重置周期统计
+                    contact_monitor["max_force_in_period"] = torch.zeros_like(max_in_period)
+                    contact_monitor["exceed_count_in_period"] = 0
+            # ============================================
+
+            # ========== Base Height 打印 ==========
+            if timestep % 50 == 0:  # 每50步打印一次
+                try:
+                    robot_asset = env.unwrapped.scene["robot"]
+                    # 获取 root position (base_link 高度)
+                    base_height = robot_asset.data.root_pos_w[:, 2].detach().cpu()
+                    env0_height = base_height[0].item()
+                    mean_height = base_height.mean().item()
+                    min_height = base_height.min().item()
+                    max_height = base_height.max().item()
+                    print(f"[INFO][Step {timestep}] Base Height: "
+                          f"Env0={env0_height:.3f}m, mean={mean_height:.3f}m, "
+                          f"min={min_height:.3f}m, max={max_height:.3f}m")
+                except Exception:
+                    pass
+            # ======================================
+
+        timestep += 1  # 统一递增
+
         if args_cli.video:
-            timestep += 1
             # Exit the play loop after recording one video
             if timestep == args_cli.video_length:
                 break
