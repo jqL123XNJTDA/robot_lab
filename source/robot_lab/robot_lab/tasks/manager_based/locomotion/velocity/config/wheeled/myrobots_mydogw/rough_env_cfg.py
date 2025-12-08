@@ -784,11 +784,9 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         
         # 质心随机化
         self.events.randomize_com_positions.params["asset_cfg"].body_names = [self.base_link_name]
-        
-        # 外力/力矩随机化
-        #self.events.randomize_apply_external_force_torque.params["asset_cfg"].body_names = [self.base_link_name]
-        #self.events.randomize_apply_external_force_torque.params["force_range"] = e.external_force_range
-        #self.events.randomize_apply_external_force_torque.params["torque_range"] = e.external_torque_range
+
+        # 外力/力矩随机化 - 禁用（避免空 body_names 解析错误）
+        self.events.randomize_apply_external_force_torque = None
 
         # ------------------------------Rewards------------------------------
         w = self.reward_weights
