@@ -90,21 +90,21 @@ HELIOS_LEG_CFG = ArticulationCfg(
         # thigh: thigh joints use DC motor model (position control)
         "thigh": DCMotorCfg(
             joint_names_expr=[".*_thigh_joint"],
-            effort_limit=120.0,
-            saturation_effort=120.0,
-            velocity_limit=17.48,
-            stiffness=100.0,
-            damping=5.0,
+            effort_limit=200.0,
+            saturation_effort=200.0,
+            velocity_limit=25,
+            stiffness=200.0,
+            damping=10.0,
             friction=0.0,
         ),
         # calf: calf joints use DC motor model (position control)
         "calf": DCMotorCfg(
             joint_names_expr=[".*_calf_joint"],
-            effort_limit=120.0,
-            saturation_effort=120.0,
-            velocity_limit=17.48,
-            stiffness=100.0,
-            damping=5.0,
+            effort_limit=200.0,
+            saturation_effort=200.0,
+            velocity_limit=25,
+            stiffness=200.0,
+            damping=10.0,
             friction=0.0,
         ),
         # wheel: wheel joints use implicit actuator (velocity control)

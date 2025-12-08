@@ -93,15 +93,15 @@ class RobotConfig:
 
         # PD controller stiffness Kp [Nm/rad] - 与 helios_leg.py 匹配
         self.kp = {
-            "right_thigh_joint": 80.0, "left_thigh_joint": 80.0,
-            "right_calf_joint": 80.0, "left_calf_joint": 80.0,
+            "right_thigh_joint": 100.0, "left_thigh_joint": 100.0,
+            "right_calf_joint": 100.0, "left_calf_joint": 100.0,
             "right_foot_joint": 0.0, "left_foot_joint": 0.0,  # Wheels use velocity control, stiffness=0
         }
 
         # PD controller damping Kd [Nm*s/rad] - 与 helios_leg.py 匹配
         self.kd = {
-            "right_thigh_joint": 4.0, "left_thigh_joint": 4.0,
-            "right_calf_joint": 4.0, "left_calf_joint": 4.0,
+            "right_thigh_joint": 5.0, "left_thigh_joint": 5.0,
+            "right_calf_joint": 5.0, "left_calf_joint": 5.0,
             "right_foot_joint": 2.0, "left_foot_joint": 2.0,
         }
 
@@ -593,6 +593,36 @@ def start_keyboard_listener():
     listener.start()
 
 
+def get_foot_x_in_base(model, data):
+    """
+    计算两个 foot (轮子) 在基座坐标系中的 X 坐标
+
+    Returns:
+        tuple: (right_foot_x, left_foot_x) 相对于基座坐标系的 X 坐标 [m]
+    """
+    # 获取基座位姿
+    base_pos = data.qpos[:3]  # 世界坐标系中基座位置
+    base_quat = data.qpos[3:7]  # [w, x, y, z] MuJoCo 格式
+
+    # 转换四元数格式用于 scipy (wxyz -> xyzw)
+    base_quat_scipy = np.array([base_quat[1], base_quat[2], base_quat[3], base_quat[0]])
+    r_base = R.from_quat(base_quat_scipy)
+
+    # 获取 foot body 在世界坐标系中的位置
+    right_foot_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "right_foot_link")
+    left_foot_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "left_foot_link")
+
+    right_foot_pos_world = data.xpos[right_foot_id]
+    left_foot_pos_world = data.xpos[left_foot_id]
+
+    # 将 foot 位置从世界坐标系转换到基座坐标系
+    # p_base = R_base^T * (p_world - base_pos)
+    right_foot_in_base = r_base.apply(right_foot_pos_world - base_pos, inverse=True)
+    left_foot_in_base = r_base.apply(left_foot_pos_world - base_pos, inverse=True)
+
+    return right_foot_in_base[0], left_foot_in_base[0]
+
+
 def get_obs(data, vel_cmd, last_action, debug=False):
     """
     Build observation vector (27D)
@@ -640,7 +670,8 @@ def get_obs(data, vel_cmd, last_action, debug=False):
     if debug:
         print(f"gyro: {gyro}, proj: {proj}, q: {q}, dq: {dq}")
 
-    return obs
+    # 返回 obs 和 proj 用于打印
+    return obs, proj
 
 
 def scale_action(raw_action, cfg):
@@ -760,6 +791,9 @@ def run_mujoco(policy, mujoco_model_path, sim_duration, dt, decimation,
     mujoco.mj_step(model, data)
     viewer = mujoco_viewer.MujocoViewer(model, data)
 
+    # 启用坐标系显示 (frame = body frame)
+    viewer.vopt.frame = mujoco.mjtFrame.mjFRAME_BODY
+
     # Initialize PDTuner
     pd_tuner = PDTuner(cfg.robot_config)
     
@@ -840,7 +874,15 @@ def run_mujoco(policy, mujoco_model_path, sim_duration, dt, decimation,
             if step % decimation == 0:
                 if pose_ctrl.mode == ControlMode.NORMAL:
                     # Build observation
-                    obs = get_obs(data, vel_cmd, last_action, debug=debug)
+                    obs, proj_gravity = get_obs(data, vel_cmd, last_action, debug=debug)
+
+                    # 计算 foot 在基座坐标系中的 X 坐标
+                    right_foot_x, left_foot_x = get_foot_x_in_base(model, data)
+
+                    # 打印重力投影分量和 foot X 坐标
+                    print(f"\r[Gravity] x={proj_gravity[0]:+.3f} y={proj_gravity[1]:+.3f} z={proj_gravity[2]:+.3f} | "
+                          f"[Foot X] R={right_foot_x:+.3f} L={left_foot_x:+.3f}", end="")
+
                     obs_tensor = torch.from_numpy(obs).to(dtype=torch.float32).unsqueeze(0)
                     with torch.no_grad():
                         raw_action = policy(obs_tensor).cpu().numpy().squeeze()
@@ -936,10 +978,10 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Helios Leg MuJoCo Deployment')
     parser.add_argument('--model-path', type=str,
-                        default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/helios_leg/mjcf/lasted.xml',
+                        default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/helios_leg/mjcf/helios_leg.xml',
                         help='Path to MuJoCo XML model')
     parser.add_argument('--policy-path', type=str,
-                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_flat/2025-12-04_13-57-00/exported/policy.pt',
+                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_flat/2025-12-06_19-04-19/exported/policy.pt',
                         help='Path to trained policy (.pt)')
     parser.add_argument('--duration', type=float, default=120.0, help='Simulation duration [s]')
     parser.add_argument('--dt', type=float, default=0.001, help='Physics timestep [s]')

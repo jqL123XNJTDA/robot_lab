@@ -716,6 +716,50 @@ def base_height_l2(
     return reward
 
 
+def base_height_reward(
+    env: ManagerBasedRLEnv,
+    min_height: float = 0.0,
+    max_height: float = 0.5,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """奖励基座高度 - 高度越高奖励越大（线性）
+
+    Args:
+        env: ManagerBasedRLEnv 实例
+        min_height: 最小高度 [m] - 低于此高度奖励为 0
+        max_height: 最大高度 [m] - 高于此高度奖励饱和为 1
+        asset_cfg: 机器人场景实体配置
+
+    Returns:
+        torch.Tensor: 奖励值 (batch_size,) - 归一化到 [0, 1] 范围
+
+    公式:
+        reward = clamp((height - min_height) / (max_height - min_height), 0, 1)
+
+    使用方式:
+        配合正权重使用，如 weight = 5.0
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    # 获取基座高度
+    height = asset.data.root_pos_w[:, 2]
+
+    # 归一化到 [0, 1] 范围
+    height_range = max_height - min_height
+    if height_range <= 0.0:
+        raise ValueError(f"base_height_reward 期望 max_height({max_height}) > min_height({min_height})")
+
+    normalized_height = (height - min_height) / height_range
+
+    # 限制在 [0, 1] 范围内
+    reward = torch.clamp(normalized_height, 0.0, 1.0)
+
+    # 重力调制：正立时奖励生效
+    reward *= torch.clamp(-asset.data.projected_gravity_b[:, 2], 0.0, 0.7) / 0.7
+
+    return reward
+
+
 def lin_vel_z_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Penalize z-axis base linear velocity using L2 squared kernel."""
     # extract the used quantities (to enable type-hinting)
