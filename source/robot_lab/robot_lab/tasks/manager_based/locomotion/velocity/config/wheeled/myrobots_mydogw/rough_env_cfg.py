@@ -353,36 +353,36 @@ class MyDogHistEventParams:
     reset_base_pose_range_roll: tuple = (-3.14, 3.14)
     reset_base_pose_range_pitch: tuple = (-3.14, 3.14)
     reset_base_pose_range_yaw: tuple = (-3.14, 3.14)
-    
+
     reset_base_velocity_range_x: tuple = (-0.5, 0.5)
     reset_base_velocity_range_y: tuple = (-0.5, 0.5)
     reset_base_velocity_range_z: tuple = (-0.5, 0.5)
     reset_base_velocity_range_roll: tuple = (-0.5, 0.5)
     reset_base_velocity_range_pitch: tuple = (-0.5, 0.5)
     reset_base_velocity_range_yaw: tuple = (-0.5, 0.5)
-    
-    # 外力/力矩随机化
-    external_force_range: tuple = (-20.0, 20.0)
+
+    # 外力/力矩随机化 - 与父类一致，初期训练不宜过大
+    external_force_range: tuple = (-10.0, 10.0)
     external_torque_range: tuple = (-10.0, 10.0)
 
 
 @configclass
 class MyDogHistRewardWeights:
     """HIM 版本的奖励权重配置 - 参考 HIMLoco 论文调整"""
-    
+
     # 通用
     is_terminated: float = 0.0
-    
+
     # 速度跟踪奖励（主要目标）
-    track_lin_vel_xy_exp: float = 6.0
-    track_ang_vel_z_exp: float = 3.0
-    upward: float = 0.0
-    
+    track_lin_vel_xy_exp: float = 1.0
+    track_ang_vel_z_exp: float = 0.5
+    upward: float = 1.0  # 【关键】直立奖励，防止机器人蠕动
+
     # 根部惩罚
     lin_vel_z_l2: float = -2.0
     ang_vel_xy_l2: float = -0.05
-    flat_orientation_l2: float = -1
-    base_height_l2: float = -2
+    flat_orientation_l2: float = 0.0  # 与 MyDogFlatEnvCfg 一致，Rough 地形设为 0
+    base_height_l2: float = -5  # 禁用，用 upward 替代
     body_lin_acc_l2: float = 0.0
     
     # 关节惩罚
@@ -398,13 +398,13 @@ class MyDogHistRewardWeights:
     stand_still: float = -2.0
     joint_pos_penalty: float = -1.0
     wheel_vel_penalty: float = 0.0
-    joint_mirror: float = -0.05
+    joint_mirror: float = -0.0
     
     # 动作惩罚
     action_rate_l2: float = -0.01
     
     # 接触惩罚
-    undesired_contacts: float = -5.0
+    undesired_contacts: float = -20.0
     contact_forces: float = -6e-4
     
     # 其他奖励
@@ -884,11 +884,14 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # ------------------------------Terminations------------------------------
         self.terminations.illegal_contact = None
-        
-        # 禁用部分课程学习
+
+        # ------------------------------Curriculum------------------------------
+        # 禁用所有课程学习（与 MyDogRoughEnvCfg 一致，先专注基础训练）
         self.curriculum.command_levels = None
+        self.curriculum.command_levels_lin_vel = None
+        self.curriculum.command_levels_ang_vel = None
         self.curriculum.disturbance_levels = None
-        self.curriculum.mass_randomization_levels = None  
+        self.curriculum.mass_randomization_levels = None
         self.curriculum.com_randomization_levels = None
 
         # ------------------------------Commands------------------------------
