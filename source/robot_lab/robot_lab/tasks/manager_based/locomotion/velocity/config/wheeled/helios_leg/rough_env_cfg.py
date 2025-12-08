@@ -211,6 +211,26 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 外力/力矩扰动应用到base_link
         self.events.randomize_apply_external_force_torque.params["asset_cfg"].body_names = [self.base_link_name]
 
+        # 禁用部分领域随机化（训练初期简化）
+        self.events.randomize_push_robot = None
+        self.events.randomize_actuator_gains = None
+        self.events.randomize_joint_friction = None
+        self.events.randomize_motor_overheat = None
+        self.events.randomize_sensor_noise = None
+        self.events.randomize_time_delay = None
+
+        # 保留关节重置事件，但不加随机（使用 init_state 定义的默认姿态）
+        self.events.randomize_reset_joints.params["position_range"] = (1.0, 1.0)
+        self.events.randomize_reset_joints.params["velocity_range"] = (0.0, 0.0)
+
+        # 保留基座重置事件，无位置/速度随机化
+        self.events.randomize_reset_base.params["pose_range"] = {
+            "x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)
+        }
+        self.events.randomize_reset_base.params["velocity_range"] = {
+            "x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0),
+            "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)
+        }
         # ------------------------------Rewards 奖励配置------------------------------
         # === 通用奖励 ===
         # 终止惩罚（摔倒等）
@@ -227,8 +247,8 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.base_height_l2.weight = 0
         # 基座高度奖励（高度越高奖励越大）- 正权重
         self.rewards.base_height_reward.weight = 2.0
-        self.rewards.base_height_reward.params["min_height"] = 0.3  # 目标高度 0.35m
-        self.rewards.base_height_reward.params["max_height"] = 0.35  # 最高高度 0.4m（饱和）
+        self.rewards.base_height_reward.params["min_height"] = 0.35  # 目标高度 0.35m
+        self.rewards.base_height_reward.params["max_height"] = 0.4  # 最高高度 0.4m（饱和）
         # 基座线加速度惩罚（平滑运动）
         self.rewards.body_lin_acc_l2.weight = -1e-4
         self.rewards.body_lin_acc_l2.params["asset_cfg"].body_names = [self.base_link_name]
@@ -290,7 +310,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # === 接触传感器相关 ===
         # 非期望接触惩罚（除轮子外的接触）
-        self.rewards.undesired_contacts.weight = -10.0
+        self.rewards.undesired_contacts.weight = -5.0
         self.rewards.undesired_contacts.params["sensor_cfg"].body_names = [f"^(?!.*{self.foot_link_name}).*"]
         self.rewards.undesired_contacts.params["threshold"] = 1.0
         # 接触力惩罚（轮子接触力过大）

@@ -67,7 +67,7 @@ HELIOS_LEG_CFG = ArticulationCfg(
     # init_state: initial pose and joint states
     # Note: set reasonable initial angles within joint limits
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.32),  # initial position in world coordinates (x, y, z)
+        pos=(0.0, 0.0, 0.4),  # initial position in world coordinates (x, y, z)
         # joint_pos: set initial angles for each joint (standing pose within limits)
         joint_pos={
             # right leg: thigh [0.7, 2.7], calf [-2.1, 0.9]
@@ -93,8 +93,8 @@ HELIOS_LEG_CFG = ArticulationCfg(
             effort_limit=200.0,
             saturation_effort=200.0,
             velocity_limit=25,
-            stiffness=200.0,
-            damping=10.0,
+            stiffness=120.0,
+            damping=5.0,
             friction=0.0,
         ),
         # calf: calf joints use DC motor model (position control)
@@ -103,8 +103,8 @@ HELIOS_LEG_CFG = ArticulationCfg(
             effort_limit=200.0,
             saturation_effort=200.0,
             velocity_limit=25,
-            stiffness=200.0,
-            damping=10.0,
+            stiffness=120.0,
+            damping=5.0,
             friction=0.0,
         ),
         # wheel: wheel joints use implicit actuator (velocity control)
