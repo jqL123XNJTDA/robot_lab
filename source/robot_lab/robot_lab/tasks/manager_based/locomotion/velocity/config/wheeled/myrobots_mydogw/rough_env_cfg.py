@@ -382,7 +382,7 @@ class MyDogHistRewardWeights:
     lin_vel_z_l2: float = -2.0
     ang_vel_xy_l2: float = -0.05
     flat_orientation_l2: float = 0.0
-    base_height_l2: float = -2  # 高度惩罚
+    base_height_l2: float = 0.0  # 高度惩罚
     body_lin_acc_l2: float = 0.0
 
     # 关节惩罚
@@ -410,7 +410,7 @@ class MyDogHistRewardWeights:
     # 其他奖励 - 全部禁用
     feet_air_time: float = 0.0
     feet_contact: float = 0.0
-    feet_contact_without_cmd: float = 0.0  # 禁用，因为没有速度命令
+    feet_contact_without_cmd: float = 1.0  # 禁用，因为没有速度命令
     feet_stumble: float = 0.0
     feet_slide: float = 0.0
     feet_height: float = 0.0
@@ -787,7 +787,7 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # 外力/力矩随机化 - 禁用（避免空 body_names 解析错误）
         self.events.randomize_apply_external_force_torque = None
-
+        self.events.randomize_push_robot = None
         # ------------------------------Rewards------------------------------
         w = self.reward_weights
         
@@ -857,6 +857,7 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = [self.foot_link_name]
         self.rewards.feet_contact.weight = w.feet_contact
         self.rewards.feet_contact.params["sensor_cfg"].body_names = [self.foot_link_name]
+        self.rewards.feet_contact.params["expect_contact_num"] = 4
         self.rewards.feet_contact_without_cmd.weight = w.feet_contact_without_cmd
         self.rewards.feet_contact_without_cmd.params["sensor_cfg"].body_names = [self.foot_link_name]
         self.rewards.feet_stumble.weight = w.feet_stumble
@@ -885,12 +886,13 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # ------------------------------Curriculum------------------------------
         # 禁用所有课程学习
-        self.curriculum.terrain_levels = None
-        self.curriculum.command_levels = None
+       
+        
         self.curriculum.command_levels_lin_vel = None
         self.curriculum.command_levels_ang_vel = None
+        self.curriculum.command_levels = None
         self.curriculum.disturbance_levels = None
-        self.curriculum.mass_randomization_levels = None
+        self.curriculum.mass_randomization_levels = None  
         self.curriculum.com_randomization_levels = None
 
         # ------------------------------Commands------------------------------
