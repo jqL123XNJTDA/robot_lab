@@ -287,7 +287,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.stand_still.weight = -0.01
         self.rewards.stand_still.params["asset_cfg"].joint_names = self.leg_joint_names
         # 关节位置偏差惩罚
-        self.rewards.joint_pos_penalty.weight = -1
+        self.rewards.joint_pos_penalty.weight = -0.05
         self.rewards.joint_pos_penalty.params["asset_cfg"].joint_names = self.leg_joint_names
         #self.rewards.joint_pos_penalty.params["velocity_threshold"] = 100
         # 轮子速度与地面速度不匹配惩罚（防止打滑）
@@ -382,16 +382,17 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # ------------------------------Curriculums 课程学习配置------------------------------
         # 线速度命令课程（根据 track_lin_vel_x_exp 奖励逐步增加速度范围）
-        self.curriculum.command_levels_lin_vel.params["reward_term_name"] = "track_lin_vel_x_exp"
-        self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.05, 1.0)
-        # 角速度命令课程（根据 track_ang_vel_z_exp 奖励逐步增加角速度范围）
-        self.curriculum.command_levels_ang_vel.params["reward_term_name"] = "track_ang_vel_z_exp"
-        self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.05, 1.0)
-
-        # ------------------------------Commands 命令配置------------------------------
+        # self.curriculum.command_levels_lin_vel.params["reward_term_name"] = "track_lin_vel_x_exp"
+        # self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.05, 1.0)
+        # # 角速度命令课程（根据 track_ang_vel_z_exp 奖励逐步增加角速度范围）
+        # self.curriculum.command_levels_ang_vel.params["reward_term_name"] = "track_ang_vel_z_exp"
+        # self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.05, 1.0)
+        self.curriculum.command_levels_lin_vel=None
+        self.curriculum.command_levels_ang_vel=None
+        # ------------------------------Commands 命令配置----   --------------------------
         # X方向线速度命令范围 (m/s) - 禁用，先专注平衡
-        self.commands.base_velocity.ranges.lin_vel_x = (-1, 1)
+        self.commands.base_velocity.ranges.lin_vel_x = (0, 0)
         # Y方向线速度命令范围 (m/s) - 禁用
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         # Z方向角速度命令范围 (rad/s) - 禁用，先专注平衡
-        self.commands.base_velocity.ranges.ang_vel_z = (-1, 1)
+        self.commands.base_velocity.ranges.ang_vel_z = (0, 0)

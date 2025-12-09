@@ -879,9 +879,13 @@ def run_mujoco(policy, mujoco_model_path, sim_duration, dt, decimation,
                     # 计算 foot 在基座坐标系中的 X 坐标
                     right_foot_x, left_foot_x = get_foot_x_in_base(model, data)
 
-                    # 打印重力投影分量和 foot X 坐标
+                    # 获取 base_link 高度
+                    base_height = data.qpos[2]
+
+                    # 打印重力投影分量、foot X 坐标和基座高度
                     print(f"\r[Gravity] x={proj_gravity[0]:+.3f} y={proj_gravity[1]:+.3f} z={proj_gravity[2]:+.3f} | "
-                          f"[Foot X] R={right_foot_x:+.3f} L={left_foot_x:+.3f}", end="")
+                          f"[Foot X] R={right_foot_x:+.3f} L={left_foot_x:+.3f} | "
+                          f"[Height] {base_height:.3f}m", end="")
 
                     obs_tensor = torch.from_numpy(obs).to(dtype=torch.float32).unsqueeze(0)
                     with torch.no_grad():
@@ -981,7 +985,7 @@ if __name__ == '__main__':
                         default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/helios_leg/mjcf/helios_leg.xml',
                         help='Path to MuJoCo XML model')
     parser.add_argument('--policy-path', type=str,
-                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_flat/2025-12-08_23-13-58/exported/policy.pt',
+                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_flat/2025-12-09_00-20-45/exported/policy.pt',
                         help='Path to trained policy (.pt)')
     parser.add_argument('--duration', type=float, default=120.0, help='Simulation duration [s]')
     parser.add_argument('--dt', type=float, default=0.001, help='Physics timestep [s]')
