@@ -336,53 +336,53 @@ class MyDogRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
 @configclass
 class MyDogHistCommandParams:
-    """HIM 版本的命令参数"""
+    """HIM 版本的命令参数 - 与 ThunderHist 一致"""
     # 速度命令范围
-    lin_vel_x: tuple = (0.0,0.0)
-    lin_vel_y: tuple = (0.0,0.0)
-    ang_vel_z: tuple = (0, 0.0)
+    lin_vel_x: tuple = (-1.0, 1.0)
+    lin_vel_y: tuple = (-1.0, 1.0)
+    ang_vel_z: tuple = (-1.0, 1.0)
 
 
 @configclass
 class MyDogHistEventParams:
-    """HIM 版本的事件随机化参数"""
+    """HIM 版本的事件随机化参数 - 与 ThunderHist 一致"""
     # 复位基座随机化
-    reset_base_pose_range_x: tuple = (0, 0)
-    reset_base_pose_range_y: tuple = (0, 0)
-    reset_base_pose_range_z: tuple = (0, 0.2)
-    reset_base_pose_range_roll: tuple = (0, 0)
-    reset_base_pose_range_pitch: tuple = (0, 0)
-    reset_base_pose_range_yaw: tuple = (0, 0)
+    reset_base_pose_range_x: tuple = (-0.5, 0.5)
+    reset_base_pose_range_y: tuple = (-0.5, 0.5)
+    reset_base_pose_range_z: tuple = (0.0, 0.2)
+    reset_base_pose_range_roll: tuple = (-3.14, 3.14)
+    reset_base_pose_range_pitch: tuple = (-3.14, 3.14)
+    reset_base_pose_range_yaw: tuple = (-3.14, 3.14)
 
-    reset_base_velocity_range_x: tuple = (0, 0.5)
-    reset_base_velocity_range_y: tuple = (0, 0)
-    reset_base_velocity_range_z: tuple = (0, 0)
-    reset_base_velocity_range_roll: tuple = (0, 0)
-    reset_base_velocity_range_pitch: tuple = (0, 0)
-    reset_base_velocity_range_yaw: tuple = (0, 0)
+    reset_base_velocity_range_x: tuple = (-0.5, 0.5)
+    reset_base_velocity_range_y: tuple = (-0.5, 0.5)
+    reset_base_velocity_range_z: tuple = (-0.5, 0.5)
+    reset_base_velocity_range_roll: tuple = (-0.5, 0.5)
+    reset_base_velocity_range_pitch: tuple = (-0.5, 0.5)
+    reset_base_velocity_range_yaw: tuple = (-0.5, 0.5)
 
-    # 外力/力矩随机化 - 与父类一致，初期训练不宜过大
-    external_force_range: tuple = (-10.0, 10.0)
+    # 外力/力矩随机化 - 与 ThunderHist 一致
+    external_force_range: tuple = (-20.0, 20.0)
     external_torque_range: tuple = (-10.0, 10.0)
 
 
 @configclass
 class MyDogHistRewardWeights:
-    """HIM 版本的奖励权重配置 - 禁用速度跟踪，专注站立平衡"""
+    """HIM 版本的奖励权重配置 - 与 ThunderHist 一致"""
 
     # 通用
-    is_terminated: float = -200
+    is_terminated: float = 0.0
 
-    # 速度跟踪奖励 - 全部禁用
-    track_lin_vel_xy_exp: float = 0.0
-    track_ang_vel_z_exp: float = 0.0
-    upward: float = 3.0  # 【关键】直立奖励，防止机器人蠕动
+    # 速度跟踪奖励
+    track_lin_vel_xy_exp: float = 6.0
+    track_ang_vel_z_exp: float = 3.0
+    upward: float = 2.0
 
     # 根部惩罚
     lin_vel_z_l2: float = -2.0
     ang_vel_xy_l2: float = -0.05
-    flat_orientation_l2: float = 0.0
-    base_height_l2: float = 0.0  # 高度惩罚
+    flat_orientation_l2: float = 0.1
+    base_height_l2: float = 0.0
     body_lin_acc_l2: float = 0.0
 
     # 关节惩罚
@@ -395,23 +395,23 @@ class MyDogHistRewardWeights:
     joint_pos_limits: float = -4.0
     joint_vel_limits: float = 0.0
     joint_power: float = -2e-5
-    stand_still: float = 0.0  # 禁用，因为没有速度命令
-    joint_pos_penalty: float = 0.0  # 禁用，因为没有速度命令
+    stand_still: float = -2.0
+    joint_pos_penalty: float = -1.0
     wheel_vel_penalty: float = 0.0
-    joint_mirror: float = 0.0
+    joint_mirror: float = -0.05
 
     # 动作惩罚
     action_rate_l2: float = -0.01
 
     # 接触惩罚
-    undesired_contacts: float = -5.0
+    undesired_contacts: float = -1.0
     contact_forces: float = -6e-4
 
-    # 其他奖励 - 全部禁用
+    # 其他奖励
     feet_air_time: float = 0.0
     feet_contact: float = 0.0
-    feet_contact_without_cmd: float = 1.0  # 禁用，因为没有速度命令
-    feet_stumble: float = 0.0
+    feet_contact_without_cmd: float = 0.1
+    feet_stumble: float = -5.0
     feet_slide: float = 0.0
     feet_height: float = 0.0
     feet_height_body: float = 0.0
@@ -654,13 +654,13 @@ class MyDogHistRewardsCfg(RewardsCfg):
 
 @configclass
 class MyDogHistActuatorGains:
-    """执行器 PD 增益配置"""
-    hip_stiffness: float = 100.0
-    hip_damping: float = 5.0
+    """执行器 PD 增益配置 - 与 ThunderHist 一致"""
+    hip_stiffness: float = 70.0
+    hip_damping: float = 15.0
     thigh_stiffness: float = 100.0
-    thigh_damping: float = 5.0
-    calf_stiffness: float = 100.0
-    calf_damping: float = 5.0
+    thigh_damping: float = 15.0
+    calf_stiffness: float = 120.0
+    calf_damping: float = 20.0
     wheel_stiffness: float = 0.0
     wheel_damping: float = 1.0
 
@@ -711,21 +711,21 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
         self.scene.height_scanner_base.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
         
-        # 初始状态配置
+        # 初始状态配置 - 与 ThunderHist 一致
         self.scene.robot.init_state.pos = (0.0, 0.0, 0.55)
         self.scene.robot.init_state.joint_pos = {
             "FR_hip_joint": -0.1,
-            "FR_thigh_joint": -0.9,
+            "FR_thigh_joint": -0.8,
             "FR_calf_joint": 1.8,
             "FL_hip_joint": 0.1,
-            "FL_thigh_joint": 0.9,
+            "FL_thigh_joint": 0.8,
             "FL_calf_joint": -1.8,
             "RR_hip_joint": 0.1,
-            "RR_thigh_joint": 2.2,
-            "RR_calf_joint": 1.8,
+            "RR_thigh_joint": 0.8,
+            "RR_calf_joint": -1.8,
             "RL_hip_joint": -0.1,
-            "RL_thigh_joint": -2.2,
-            "RL_calf_joint": -1.8,
+            "RL_thigh_joint": -0.8,
+            "RL_calf_joint": 1.8,
             ".*_foot_joint": 0.0,
         }
         self.scene.robot.init_state.joint_vel = {".*": 0.0}
@@ -785,9 +785,10 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 质心随机化
         self.events.randomize_com_positions.params["asset_cfg"].body_names = [self.base_link_name]
 
-        # 外力/力矩随机化 - 禁用（避免空 body_names 解析错误）
-        self.events.randomize_apply_external_force_torque = None
-        self.events.randomize_push_robot = None
+        # 外力/力矩随机化 - 与 ThunderHist 一致
+        self.events.randomize_apply_external_force_torque.params["asset_cfg"].body_names = [self.base_link_name]
+        self.events.randomize_apply_external_force_torque.params["force_range"] = e.external_force_range
+        self.events.randomize_apply_external_force_torque.params["torque_range"] = e.external_torque_range
         # ------------------------------Rewards------------------------------
         w = self.reward_weights
         
@@ -804,7 +805,7 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.ang_vel_xy_l2.weight = w.ang_vel_xy_l2
         self.rewards.flat_orientation_l2.weight = w.flat_orientation_l2
         self.rewards.base_height_l2.weight = w.base_height_l2
-        self.rewards.base_height_l2.params["target_height"] = 0.55
+        self.rewards.base_height_l2.params["target_height"] = 0.60  # 与 ThunderHist 一致
         self.rewards.base_height_l2.params["asset_cfg"].body_names = [self.base_link_name]
         self.rewards.body_lin_acc_l2.weight = w.body_lin_acc_l2
         self.rewards.body_lin_acc_l2.params["asset_cfg"].body_names = [self.base_link_name]
@@ -882,22 +883,19 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             self.disable_zero_weight_rewards()
 
         # ------------------------------Terminations------------------------------
-        self.terminations.illegal_contact.params["sensor_cfg"].body_names = [self.base_link_name]
+        # 与 ThunderHist 一致，禁用 illegal_contact
+        self.terminations.illegal_contact = None
 
         # ------------------------------Curriculum------------------------------
-        # 禁用所有课程学习
-       
-        
-        self.curriculum.command_levels_lin_vel = None
-        self.curriculum.command_levels_ang_vel = None
+        # 禁用课程学习 - 与 ThunderHist 一致
         self.curriculum.command_levels = None
         self.curriculum.disturbance_levels = None
-        self.curriculum.mass_randomization_levels = None  
+        self.curriculum.mass_randomization_levels = None
         self.curriculum.com_randomization_levels = None
 
         # ------------------------------Commands------------------------------
-        # 禁用速度命令（设置为零范围）
-        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
-        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
-        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+        # 应用命令参数 - 与 ThunderHist 一致
+        c = self.command_params
+        self.commands.base_velocity.ranges.lin_vel_x = c.lin_vel_x
+        self.commands.base_velocity.ranges.lin_vel_y = c.lin_vel_y
+        self.commands.base_velocity.ranges.ang_vel_z = c.ang_vel_z

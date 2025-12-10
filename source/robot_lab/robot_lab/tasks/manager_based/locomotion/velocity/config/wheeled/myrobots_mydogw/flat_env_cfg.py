@@ -59,12 +59,12 @@ class MyDogFlatEnvCfg(MyDogRoughEnvCfg):
 @configclass
 class MyDogHistFlatEnvCfg(MyDogHistRoughEnvCfg):
     """
-    HIM 版本 - 平坦地形
-    
+    HIM 版本 - 平坦地形（与 ThunderHistFlatEnvCfg 一致）
+
     用于：
     1. 初期在平坦地形上预训练（更容易收敛）
     2. 测试和调试 HIM 框架
-    
+
     与 MyDogHistRoughEnvCfg 的区别：
     1. 地形类型为平面
     2. 禁用高度扫描（height_scan_group）
@@ -75,18 +75,18 @@ class MyDogHistFlatEnvCfg(MyDogHistRoughEnvCfg):
         # 调用父类初始化
         super().__post_init__()
 
-        # 覆盖高度相关奖励
+        # 覆盖高度相关奖励 - 与 ThunderHistFlatEnvCfg 一致
         self.rewards.base_height_l2.params["sensor_cfg"] = None
-        
+
         # 强制平面地形
         self.scene.terrain.terrain_type = "plane"
         self.scene.terrain.terrain_generator = None
-        
-        # 禁用高度扫描（Flat 环境不需要）
+
+        # 禁用高度扫描
         self.scene.height_scanner = None
-        # HIM 版本的 height_scan 在 height_scan_group 中，直接禁用整个组
+        # HIM 版本的 height_scan 在独立的 height_scan_group 中
         self.observations.height_scan_group = None
-        
+
         # 禁用地形课程
         self.curriculum.terrain_levels = None
 
