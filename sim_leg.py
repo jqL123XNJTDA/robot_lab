@@ -791,8 +791,8 @@ def run_mujoco(policy, mujoco_model_path, sim_duration, dt, decimation,
     mujoco.mj_step(model, data)
     viewer = mujoco_viewer.MujocoViewer(model, data)
 
-    # 启用坐标系显示 (frame = body frame)
-    viewer.vopt.frame = mujoco.mjtFrame.mjFRAME_BODY
+    # 禁用坐标系显示
+    viewer.vopt.frame = mujoco.mjtFrame.mjFRAME_NONE
 
     # Initialize PDTuner
     pd_tuner = PDTuner(cfg.robot_config)
@@ -985,7 +985,7 @@ if __name__ == '__main__':
                         default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/helios_leg/mjcf/helios_leg.xml',
                         help='Path to MuJoCo XML model')
     parser.add_argument('--policy-path', type=str,
-                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_flat/2025-12-09_00-20-45/exported/policy.pt',
+                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_flat/2025-12-10_00-24-48/exported/policy.pt',
                         help='Path to trained policy (.pt)')
     parser.add_argument('--duration', type=float, default=120.0, help='Simulation duration [s]')
     parser.add_argument('--dt', type=float, default=0.001, help='Physics timestep [s]')
