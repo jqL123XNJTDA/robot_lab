@@ -215,42 +215,40 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
        
        
         
-        self.events.randomize_apply_external_force_torque.params["asset_cfg"].body_names = [self.base_link_name]
-        self.events.randomize_apply_external_force_torque.params["force_range"] = (-5.0, 5.0)
-        self.events.randomize_apply_external_force_torque.params["torque_range"] = (-5.0, 5.0)
-
-        # 保留关节重置事件，但不加随机（使用 init_state 定义的默认姿态）
-        self.events.randomize_reset_joints.params["position_range"] = (1.0, 1.0)
-        self.events.randomize_reset_joints.params["velocity_range"] = (0.0, 0.0)
+     
 
         # 保留基座重置事件，无位置/速度随机化
         self.events.randomize_reset_base.params["pose_range"] = {
-            "x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)
+            "x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)
         }
         self.events.randomize_reset_base.params["velocity_range"] = {
-            "x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0),
-            "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)
+                "x": (-0.5, 0.5),
+                "y": (-0.5, 0.5),
+                "z": (-0.5, 0.5),
+                "roll": (0, 0),
+                "pitch": (0, 0),
+                "yaw": (-0.5, 0.5),
         }
         # ------------------------------Rewards 奖励配置------------------------------
         # === 通用奖励 ===
         # 终止惩罚（摔倒等）
-        self.rewards.is_terminated.weight = -500
+        self.rewards.is_terminated.weight = -200
 
         # === 基座/根部惩罚 ===
         # Z方向线速度惩罚（抑制上下抖动）- 双轮腿需要较强抑制
-        self.rewards.lin_vel_z_l2.weight = -2
+        self.rewards.lin_vel_z_l2.weight = -4
         # XY方向角速度惩罚（抑制翻滚/俯仰晃动）- 双轮腿容易翻滚，需加强
         self.rewards.ang_vel_xy_l2.weight = -0.05
         # 平坦姿态惩罚（鼓励保持水平）- 双轮腿平衡难度大，需加强
         self.rewards.flat_orientation_l2.weight = -50
         # 基座高度惩罚（禁用，改用 base_height_reward）
-        self.rewards.base_height_l2.weight = -50
-        self.rewards.base_height_l2.params["target_height"] = 0.32
+        self.rewards.base_height_l2.weight = -100
+        self.rewards.base_height_l2.params["target_height"] = 0.25
         self.rewards.base_height_l2.params["asset_cfg"].body_names = [self.base_link_name]
         # 基座高度奖励（高度越高奖励越大）- 正权重
         self.rewards.base_height_reward.weight = 2
-        self.rewards.base_height_reward.params["min_height"] = 0.3  # 目标高度 0.35m
-        self.rewards.base_height_reward.params["max_height"] = 0.32  # 最高高度 0.4m（饱和）
+        self.rewards.base_height_reward.params["min_height"] = 0.20  # 目标高度 0.35m
+        self.rewards.base_height_reward.params["max_height"] = 0.25  # 最高高度 0.4m（饱和）
         # 基座线加速度惩罚（平滑运动）
         self.rewards.body_lin_acc_l2.weight = -1e-4
         self.rewards.body_lin_acc_l2.params["asset_cfg"].body_names = [self.base_link_name]
@@ -287,7 +285,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.stand_still.weight = -0.01
         self.rewards.stand_still.params["asset_cfg"].joint_names = self.leg_joint_names
         # 关节位置偏差惩罚
-        self.rewards.joint_pos_penalty.weight = -0.01
+        self.rewards.joint_pos_penalty.weight = 0
         self.rewards.joint_pos_penalty.params["asset_cfg"].joint_names = self.leg_joint_names
         #self.rewards.joint_pos_penalty.params["velocity_threshold"] = 100
         # 轮子速度与地面速度不匹配惩罚（防止打滑）
@@ -300,7 +298,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             ["right_(thigh|calf)_joint", "left_(thigh|calf)_joint"],
         ]
         # 反向镜像奖励（左右关节角度符号相反: left = -right）
-        self.rewards.joint_mirror_neg.weight = -20
+        self.rewards.joint_mirror_neg.weight = -30
         self.rewards.joint_mirror_neg.params["mirror_joints"] = [
             ["right_thigh_joint", "left_thigh_joint"],
             ["right_calf_joint", "left_calf_joint"],
@@ -323,7 +321,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 禁用XY方向线速度跟踪
         self.rewards.track_lin_vel_xy_exp.weight = 0
         # 禁用Y方向线速度跟踪
-        self.rewards.track_lin_vel_y_exp.weight = 0
+        self.rewards.track_lin_vel_y_exp.weight = 3
         # 禁用X方向线速度跟踪（先专注平衡）
         self.rewards.track_lin_vel_x_exp.weight = 6
         # 禁用Z方向角速度跟踪（先专注平衡）
@@ -389,13 +387,12 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.0, 1.0)  # 从0开始
         # 角速度命令课程 - 阶段1禁用
         self.curriculum.command_levels_lin_vel = None 
-        self.curriculum.command_levels_ang_vel.params["reward_term_name"] = "track_ang_vel_z_exp"
-        self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.0, 0.5)  # 阶段1禁用
-
+        self.curriculum.command_levels_ang_vel =None
+      
         # ------------------------------Commands 命令配置------------------------------
         # X方向线速度命令范围 (m/s)
         self.commands.base_velocity.ranges.lin_vel_x = (0, 0)
         # Y方向线速度命令范围 (m/s) - 禁用
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         # Z方向角速度命令范围 (rad/s) - 阶段1禁用
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.ang_vel_z = (0, 0)
