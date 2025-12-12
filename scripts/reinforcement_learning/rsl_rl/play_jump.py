@@ -132,16 +132,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         )
 
     # ========== 跳跃命令手动控制模式 ==========
-    # 按空格触发跳跃，蓄力完成后等待下一次按键
+    # 按空格触发跳跃：[0,1,0]，松开后回到 [0,0,0]
     jump_manual_control = {
         "enabled": True,
         "lin_vel_x": 0.0,        # 前向速度设为0
         "ang_vel_z": 0.0,        # 无偏航
-        "charge_duration": 0.5,  # 蓄力时间 0.5s
-        "hold_duration": 0.2,    # jump_cmd=1 保持时间
-        "state": "idle",         # 状态: idle / charging / launching
+        "hold_duration": 0.5,    # jump_cmd=1 保持时间（按一下保持0.5秒）
+        "state": "idle",         # 状态: idle / jumping
         "frame_counter": 0,      # 当前阶段帧计数
-        "space_pressed": False,  # 空格键状态
+        "space_pressed": False,  # 空格键触发标志
     }
 
     # 键盘监听（空格触发跳跃）
@@ -418,63 +417,49 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # ========== 跳跃命令手动注入 ==========
             if jump_manual_control["enabled"]:
                 num_envs = obs.shape[0]
-                step_dt = dt  # env.unwrapped.step_dt
-                charge_frames = int(jump_manual_control["charge_duration"] / step_dt)
+                step_dt = dt
                 hold_frames = int(jump_manual_control["hold_duration"] / step_dt)
 
                 state = jump_manual_control["state"]
                 frame = jump_manual_control["frame_counter"]
 
-                # 状态机
+                # 简化状态机：idle -> jumping -> idle
                 if state == "idle":
-                    # 等待空格触发
                     jump_cmd = 0.0
                     if jump_manual_control["space_pressed"]:
                         jump_manual_control["space_pressed"] = False
-                        jump_manual_control["state"] = "charging"
+                        jump_manual_control["state"] = "jumping"
                         jump_manual_control["frame_counter"] = 0
-                        print(f"[Jump][Step {timestep}] >>> 开始蓄力")
+                        print(f"[Jump][Step {timestep}] >>> 跳跃触发! jump_cmd=1")
 
-                elif state == "charging":
-                    # 蓄力阶段: jump_cmd 从 0 渐变到 1
-                    jump_cmd = frame / charge_frames
-                    jump_manual_control["frame_counter"] += 1
-
-                    if frame >= charge_frames:
-                        jump_manual_control["state"] = "launching"
-                        jump_manual_control["frame_counter"] = 0
-                        print(f"[Jump][Step {timestep}] >>> 起跳爆发!")
-
-                elif state == "launching":
-                    # 起跳阶段: jump_cmd = 1
+                elif state == "jumping":
                     jump_cmd = 1.0
                     jump_manual_control["frame_counter"] += 1
-
                     if frame >= hold_frames:
                         jump_manual_control["state"] = "idle"
                         jump_manual_control["frame_counter"] = 0
-                        print(f"[Jump][Step {timestep}] >>> 等待下一次跳跃 (按空格)")
+                        print(f"[Jump][Step {timestep}] >>> 跳跃结束, 等待下一次 (按空格)")
 
                 else:
                     jump_cmd = 0.0
 
                 # 构造命令: [lin_vel_x, jump_cmd, ang_vel_z]
+                # 按空格: [0, 1, 0]，没按: [0, 0, 0]
                 manual_cmd = torch.tensor(
                     [[jump_manual_control["lin_vel_x"], jump_cmd, jump_manual_control["ang_vel_z"]]],
                     dtype=torch.float32,
                     device=obs.device
                 ).expand(num_envs, -1)
-            
+
                 # 注入到观测的 velocity_commands 位置 (索引 6-8)
-                
-                #obs[:, 6:9] = manual_cmd
-                obs[:, 6:9] = [0,0.5,0]
-                # 打印当前状态（每 10 帧）
-                if timestep % 10 == 0:
-                    print(f"[Jump][Step {timestep}] {state}: jump_cmd={jump_cmd:.2f}")
+                obs[:, 6:9] = manual_cmd
+
+                # 打印当前状态（每 50 帧）
+                if timestep % 50 == 0:
+                    print(f"[Jump][Step {timestep}] state={state}, cmd=[0, {jump_cmd:.1f}, 0]")
 
             # ==========================================
-            obs[:, 6:9] = [0,0,0]
+            # obs[:, 6:9] = [0,0,0]
             # agent stepping
             actions = policy(obs)
             # actions = torch.zeros_like(actions)

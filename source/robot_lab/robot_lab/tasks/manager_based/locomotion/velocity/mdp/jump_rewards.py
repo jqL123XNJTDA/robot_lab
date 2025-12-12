@@ -1,7 +1,10 @@
 # Copyright (c) 2024-2025 Ziqi Fan
 # SPDX-License-Identifier: Apache-2.0
 
-"""跳跃专用奖励函数 - 用于 Helios 双足轮腿机器人向前跳跃训练
+"""跳跃专用奖励函数 - 用于 Helios 双足轮腿机器人垂直跳跃训练
+
+简化状态机（参考 GO2_Spring_Jump）：
+    待机 (jump_cmd=0) → 跳跃触发 (jump_cmd=1) → 腾空 (was_in_flight) → 落地 (has_jumped)
 
 奖励函数列表：
 1. jump_vertical_velocity - 腾空时 Z 轴速度奖励
@@ -12,9 +15,9 @@
 6. jump_landing_stability - 落地稳定性奖励
 
 分阶段奖励：
-- jump_pre_charge_height - 运动阶段：保持目标高度
-- jump_charge_crouch - 蓄力阶段：压低重心奖励
-- jump_charge_feet_contact - 蓄力阶段：双脚着地奖励（离地惩罚）
+- jump_pre_charge_height - 待机阶段：保持目标高度
+- jump_charge_crouch - 起跳准备阶段：压低重心（jump_cmd=1 且尚未腾空）
+- jump_charge_feet_contact - 起跳准备阶段：双脚着地
 - jump_launch_upward - 起跳阶段：向上速度奖励
 - jump_flight_height - 腾空阶段：高度奖励
 - jump_land_stable - 落地阶段：稳定性奖励
@@ -124,9 +127,9 @@ def jump_charge_crouch(
     target_height: float = 0.25,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """蓄力阶段：压低重心奖励
+    """起跳准备阶段：压低重心奖励（简化版）
 
-    在蓄力阶段 (0 < jump_cmd < 1)，奖励机器人压低重心
+    在跳跃指令触发后（jump_cmd=1）、腾空前，奖励机器人压低重心蓄力
 
     Args:
         env: 环境实例
@@ -139,17 +142,19 @@ def jump_charge_crouch(
     """
     asset: RigidObject = env.scene[asset_cfg.name]
     jump_cmd: JumpCommand = env.command_manager.get_term(command_name)
+    cmd = env.command_manager.get_command(command_name)
 
-    # 只在蓄力阶段给予奖励
-    is_charging = jump_cmd.is_charging
+    # 简化逻辑：jump_cmd=1 且尚未腾空 → 起跳准备阶段
+    jump_triggered = cmd[:, 1] == 1.0
+    is_preparing = jump_triggered & ~jump_cmd.was_in_flight
 
-    if not is_charging.any():
+    if not is_preparing.any():
         return torch.zeros(env.num_envs, device=env.device)
 
     # 高度奖励：越接近目标低姿态越好
     current_height = asset.data.root_pos_w[:, 2]
     height_error = torch.abs(current_height - target_height)
-    reward = torch.exp(-height_error * 10.0) * is_charging.float()
+    reward = torch.exp(-height_error * 10.0) * is_preparing.float()
 
     return reward
 
@@ -159,9 +164,9 @@ def jump_charge_vel_tracking(
     command_name: str,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """蓄力阶段：X 速度追踪奖励
+    """起跳准备阶段：X 速度追踪奖励（简化版）
 
-    在蓄力阶段，奖励保持目标前向速度
+    在跳跃指令触发后、腾空前，奖励保持目标前向速度
 
     Args:
         env: 环境实例
@@ -175,10 +180,11 @@ def jump_charge_vel_tracking(
     jump_cmd: JumpCommand = env.command_manager.get_term(command_name)
     cmd = env.command_manager.get_command(command_name)
 
-    # 只在蓄力阶段生效
-    is_charging = jump_cmd.is_charging
+    # 简化逻辑：jump_cmd=1 且尚未腾空
+    jump_triggered = cmd[:, 1] == 1.0
+    is_preparing = jump_triggered & ~jump_cmd.was_in_flight
 
-    if not is_charging.any():
+    if not is_preparing.any():
         return torch.zeros(env.num_envs, device=env.device)
 
     # 获取基座坐标系下的前向速度
@@ -189,7 +195,7 @@ def jump_charge_vel_tracking(
     # X 轴速度追踪（指数核）
     target_vel_x = cmd[:, 0]  # lin_vel_x
     vel_error = torch.square(target_vel_x - root_lin_vel_b[:, 0])
-    reward = torch.exp(-vel_error / 0.25) * is_charging.float()
+    reward = torch.exp(-vel_error / 0.25) * is_preparing.float()
 
     return reward
 
@@ -200,9 +206,9 @@ def jump_charge_feet_contact(
     contact_threshold: float = 1.0,
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
 ) -> torch.Tensor:
-    """蓄力阶段：双脚着地惩罚
+    """起跳准备阶段：双脚着地惩罚（简化版）
 
-    在蓄力阶段，惩罚脚离地（蓄力时应该双脚着地蓄力）
+    在跳跃指令触发后、腾空前，惩罚脚离地（应该双脚着地蓄力）
 
     Args:
         env: 环境实例
@@ -217,11 +223,13 @@ def jump_charge_feet_contact(
 
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     jump_cmd: JumpCommand = env.command_manager.get_term(command_name)
+    cmd = env.command_manager.get_command(command_name)
 
-    # 只在蓄力阶段检测
-    is_charging = jump_cmd.is_charging
+    # 简化逻辑：jump_cmd=1 且尚未腾空
+    jump_triggered = cmd[:, 1] == 1.0
+    is_preparing = jump_triggered & ~jump_cmd.was_in_flight
 
-    if not is_charging.any():
+    if not is_preparing.any():
         return torch.zeros(env.num_envs, device=env.device)
 
     # 获取脚部接触力（使用 body_ids，若为 None 则使用全部刚体）
@@ -236,7 +244,7 @@ def jump_charge_feet_contact(
     num_feet_in_air = torch.sum(feet_in_air.float(), dim=1)  # 离地脚数量
 
     # 惩罚：离地脚越多惩罚越大
-    penalty = num_feet_in_air * is_charging.float()
+    penalty = num_feet_in_air * is_preparing.float()
 
     return penalty
 
@@ -246,9 +254,9 @@ def jump_launch_upward(
     command_name: str,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """起跳阶段：向上速度奖励
+    """起跳阶段：向上速度奖励（简化版）
 
-    在起跳爆发阶段 (jump_cmd = 1, is_launching = True)，奖励向上速度
+    在跳跃指令触发后（jump_cmd=1）、腾空前，奖励向上速度
 
     Args:
         env: 环境实例
@@ -260,9 +268,11 @@ def jump_launch_upward(
     """
     asset: RigidObject = env.scene[asset_cfg.name]
     jump_cmd: JumpCommand = env.command_manager.get_term(command_name)
+    cmd = env.command_manager.get_command(command_name)
 
-    # 只在起跳阶段给予奖励
-    is_launching = jump_cmd.is_launching
+    # 简化逻辑：jump_cmd=1 且尚未腾空
+    jump_triggered = cmd[:, 1] == 1.0
+    is_launching = jump_triggered & ~jump_cmd.was_in_flight
 
     if not is_launching.any():
         return torch.zeros(env.num_envs, device=env.device)
@@ -280,9 +290,9 @@ def jump_launch_vertical_velocity(
     velocity_scale: float = 1.0,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """起跳阶段：垂直爆发速度奖励
+    """起跳阶段：垂直爆发速度奖励（简化版）
 
-    在起跳爆发阶段，Z 轴速度越大奖励越高（线性关系）
+    在跳跃指令触发后、腾空前，Z 轴速度越大奖励越高（线性关系）
 
     Args:
         env: 环境实例
@@ -295,9 +305,11 @@ def jump_launch_vertical_velocity(
     """
     asset: RigidObject = env.scene[asset_cfg.name]
     jump_cmd: JumpCommand = env.command_manager.get_term(command_name)
+    cmd = env.command_manager.get_command(command_name)
 
-    # 只在起跳阶段给予奖励
-    is_launching = jump_cmd.is_launching
+    # 简化逻辑：jump_cmd=1 且尚未腾空
+    jump_triggered = cmd[:, 1] == 1.0
+    is_launching = jump_triggered & ~jump_cmd.was_in_flight
 
     if not is_launching.any():
         return torch.zeros(env.num_envs, device=env.device)
@@ -316,9 +328,9 @@ def jump_launch_grf(
     max_force: float = 500.0,
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
 ) -> torch.Tensor:
-    """起跳阶段：地面反作用力奖励 (Ground Reaction Force)
+    """起跳阶段：地面反作用力奖励（简化版）
 
-    在起跳爆发阶段，脚底蹬地力度越大，奖励越高
+    在跳跃指令触发后、腾空前，脚底蹬地力度越大，奖励越高
     为防止物理引擎不稳定，力值有上限截断
 
     Args:
@@ -334,9 +346,11 @@ def jump_launch_grf(
 
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     jump_cmd: JumpCommand = env.command_manager.get_term(command_name)
+    cmd = env.command_manager.get_command(command_name)
 
-    # 只在起跳阶段给予奖励
-    is_launching = jump_cmd.is_launching
+    # 简化逻辑：jump_cmd=1 且尚未腾空
+    jump_triggered = cmd[:, 1] == 1.0
+    is_launching = jump_triggered & ~jump_cmd.was_in_flight
 
     if not is_launching.any():
         return torch.zeros(env.num_envs, device=env.device)
@@ -454,6 +468,56 @@ def jump_flight_action_rate_penalty(
     # 动作变化率惩罚
     action_diff = env.action_manager.action - env.action_manager.prev_action
     penalty = torch.sum(torch.square(action_diff), dim=1) * in_flight.float()
+
+    return penalty
+
+
+def jump_flight_foot_height_penalty(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    target_height_below: float = 0.2,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    foot_body_names: list[str] = ["left_foot_link", "right_foot_link"],
+) -> torch.Tensor:
+    """腾空阶段：脚部高度惩罚（防止空中乱蹬腿）
+
+    在腾空阶段，惩罚脚部高度偏离目标位置（base 高度 - target_height_below）。
+    目标是让脚保持在机体下方 target_height_below 米处，过高或过低都惩罚。
+
+    Args:
+        env: 环境实例
+        command_name: 跳跃命令名称
+        target_height_below: 脚应在 base 下方的目标距离 [m]
+        asset_cfg: 机器人资产配置
+        foot_body_names: 脚部刚体名称列表
+
+    Returns:
+        惩罚张量 [num_envs]（正值，配合负权重使用）
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    jump_cmd: JumpCommand = env.command_manager.get_term(command_name)
+
+    # 只在腾空阶段惩罚
+    in_flight = jump_cmd.was_in_flight & ~jump_cmd.has_jumped
+
+    if not in_flight.any():
+        return torch.zeros(env.num_envs, device=env.device)
+
+    # 获取 base 高度
+    base_height = asset.data.root_pos_w[:, 2]  # [num_envs]
+
+    # 目标脚高度 = base 高度 - target_height_below（脚在机体下方）
+    target_foot_height = base_height - target_height_below  # [num_envs]
+
+    # 获取脚部刚体高度
+    foot_ids = asset.find_bodies(foot_body_names)[0]
+    foot_heights = asset.data.body_pos_w[:, foot_ids, 2]  # [num_envs, num_feet]
+
+    # 脚部高度偏离目标的误差（过高或过低都惩罚）
+    height_error = foot_heights - target_foot_height.unsqueeze(1)  # [num_envs, num_feet]
+
+    # 惩罚：误差的平方和（过高或过低都惩罚）
+    penalty = torch.sum(torch.square(height_error), dim=1) * in_flight.float()
 
     return penalty
 
@@ -646,27 +710,69 @@ def jump_track_ang_vel_z(
     return reward
 
 
+def jump_track_lin_vel_x(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    std: float = 0.25,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """全阶段 X 轴速度追踪奖励（使用 jump_command）
+
+    在所有阶段（待机、起跳、腾空、落地）追踪目标前向速度
+
+    Args:
+        env: 环境实例
+        command_name: 跳跃命令名称
+        std: 指数核标准差
+        asset_cfg: 机器人资产配置
+
+    Returns:
+        奖励张量 [num_envs]
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    cmd = env.command_manager.get_command(command_name)
+
+    # 获取基座坐标系下的前向速度
+    root_quat = asset.data.root_quat_w
+    root_lin_vel_w = asset.data.root_lin_vel_w
+    root_lin_vel_b = quat_apply_inverse(root_quat, root_lin_vel_w)
+
+    # X 轴速度追踪（指数核）
+    # 命令格式: [lin_vel_x, jump_cmd, ang_vel_z]
+    target_vel_x = cmd[:, 0]  # lin_vel_x
+    vel_error = torch.square(target_vel_x - root_lin_vel_b[:, 0])
+    reward = torch.exp(-vel_error / std)
+
+    return reward
+
+
 def jump_phase_reward(
     env: ManagerBasedRLEnv,
     command_name: str,
-    charge_target_height: float = 0.25,
+    prepare_target_height: float = 0.25,
     flight_target_height: float = 0.5,
-    charge_weight: float = 1.0,
+    prepare_weight: float = 1.0,
     launch_weight: float = 2.0,
     flight_weight: float = 1.5,
     land_weight: float = 1.0,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """综合分阶段奖励
+    """综合分阶段奖励（简化版）
 
     根据当前阶段自动选择对应的奖励，支持不同阶段不同权重
+
+    简化状态机阶段：
+    - 待机阶段：jump_cmd=0
+    - 起跳准备阶段：jump_cmd=1 且尚未腾空
+    - 腾空阶段：was_in_flight=True 且 has_jumped=False
+    - 落地阶段：has_jumped=True
 
     Args:
         env: 环境实例
         command_name: 跳跃命令名称
-        charge_target_height: 蓄力时目标高度
+        prepare_target_height: 起跳准备时目标高度
         flight_target_height: 腾空时目标高度
-        charge_weight: 蓄力阶段权重
+        prepare_weight: 起跳准备阶段权重
         launch_weight: 起跳阶段权重
         flight_weight: 腾空阶段权重
         land_weight: 落地阶段权重
@@ -677,22 +783,22 @@ def jump_phase_reward(
     """
     asset: RigidObject = env.scene[asset_cfg.name]
     jump_cmd: JumpCommand = env.command_manager.get_term(command_name)
+    cmd = env.command_manager.get_command(command_name)
 
     reward = torch.zeros(env.num_envs, device=env.device)
 
-    # === 蓄力阶段 ===
-    is_charging = jump_cmd.is_charging
-    if is_charging.any():
+    # === 起跳准备阶段：jump_cmd=1 且尚未腾空 ===
+    jump_triggered = cmd[:, 1] == 1.0
+    is_preparing = jump_triggered & ~jump_cmd.was_in_flight
+    if is_preparing.any():
         current_height = asset.data.root_pos_w[:, 2]
-        height_error = torch.abs(current_height - charge_target_height)
-        charge_reward = torch.exp(-height_error * 10.0) * is_charging.float()
-        reward += charge_weight * charge_reward
+        height_error = torch.abs(current_height - prepare_target_height)
+        prepare_reward = torch.exp(-height_error * 10.0) * is_preparing.float()
+        reward += prepare_weight * prepare_reward
 
-    # === 起跳阶段 ===
-    is_launching = jump_cmd.is_launching
-    if is_launching.any():
+        # 起跳速度奖励
         z_vel = asset.data.root_lin_vel_w[:, 2]
-        launch_reward = torch.clamp(z_vel, min=0) * is_launching.float()
+        launch_reward = torch.clamp(z_vel, min=0) * is_preparing.float()
         reward += launch_weight * launch_reward
 
     # === 腾空阶段 ===
@@ -710,6 +816,39 @@ def jump_phase_reward(
         orientation_error = torch.sum(torch.square(projected_gravity[:, :2]), dim=1)
         land_reward = torch.exp(-orientation_error * 10.0) * has_jumped.float()
         reward += land_weight * land_reward
+
+    return reward
+
+
+def jump_flight_vel_z(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """腾空阶段 Z 轴速度奖励（参考 GO2 _reward_line_z）
+
+    在跳跃指令触发后、落地前，Z 轴正向速度越大奖励越高。
+    条件：jump_cmd=1 且 has_jumped=False
+
+    Args:
+        env: 环境实例
+        command_name: 跳跃命令名称
+        asset_cfg: 机器人资产配置
+
+    Returns:
+        奖励张量 [num_envs]
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    jump_cmd: JumpCommand = env.command_manager.get_term(command_name)
+    cmd = env.command_manager.get_command(command_name)
+
+    # 条件：jump_cmd=1 且尚未落地
+    jump_triggered = cmd[:, 1] == 1.0
+    active = jump_triggered & ~jump_cmd.has_jumped
+
+    # Z 轴速度奖励：只奖励正向速度（向上）
+    z_vel = asset.data.root_lin_vel_w[:, 2]
+    reward = torch.clamp(z_vel, min=0) * active.float()
 
     return reward
 
@@ -1046,5 +1185,61 @@ def jump_wrong_timing_penalty(
 
     # 惩罚：不该跳时向上速度越大惩罚越大
     penalty = upward_vel * should_not_jump.float()
+
+    return penalty
+
+
+def jump_idle_land_feet_air_penalty(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    contact_threshold: float = 1.0,
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
+) -> torch.Tensor:
+    """待机和落地阶段：双脚离地惩罚
+
+    在待机阶段（jump_cmd=0）和落地阶段（has_jumped=True），惩罚双脚离地。
+    这两个阶段机器人应该双脚稳定接触地面。
+
+    Args:
+        env: 环境实例
+        command_name: 跳跃命令名称
+        contact_threshold: 接触力阈值 [N]，低于此值视为离地
+        sensor_cfg: 接触传感器配置（应配置 body_names 为脚部）
+
+    Returns:
+        惩罚张量 [num_envs]（正值，配合负权重使用）
+    """
+    from isaaclab.sensors import ContactSensor
+
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    jump_cmd: JumpCommand = env.command_manager.get_term(command_name)
+    cmd = env.command_manager.get_command(command_name)
+
+    # 待机阶段：jump_cmd == 0
+    jump_cmd_val = cmd[:, 1]
+    is_idle = jump_cmd_val == 0.0
+
+    # 落地阶段：has_jumped == True
+    has_landed = jump_cmd.has_jumped
+
+    # 在这两个阶段需要双脚着地
+    should_contact = is_idle | has_landed
+
+    if not should_contact.any():
+        return torch.zeros(env.num_envs, device=env.device)
+
+    # 获取脚部接触力（Z 方向）
+    body_ids = sensor_cfg.body_ids if sensor_cfg.body_ids is not None else slice(None)
+    feet_contact_forces = contact_sensor.data.net_forces_w[:, body_ids, 2]
+
+    # 检测每只脚是否接触地面
+    feet_contact = feet_contact_forces > contact_threshold  # [num_envs, num_feet]
+
+    # 统计离地的脚数量（接触力 < 阈值）
+    feet_in_air = ~feet_contact  # True = 离地
+    num_feet_in_air = torch.sum(feet_in_air.float(), dim=1)  # 离地脚数量
+
+    # 惩罚：离地脚越多惩罚越大
+    penalty = num_feet_in_air * should_contact.float()
 
     return penalty
