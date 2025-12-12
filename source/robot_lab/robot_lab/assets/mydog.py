@@ -59,17 +59,17 @@ MYDOG_CFG = ArticulationCfg(
         # joint_pos: 明确为每个关节设置初始角度（也可使用正则表达式匹配）
         joint_pos={
             "FR_hip_joint": -0.1,
-            "FR_thigh_joint": -0.9,
+            "FR_thigh_joint": -0.8,
             "FR_calf_joint": 1.8,
             "FL_hip_joint": 0.1,
-            "FL_thigh_joint": 0.9,
+            "FL_thigh_joint": 0.8,
             "FL_calf_joint": -1.8,
             "RR_hip_joint": 0.1,
-            "RR_thigh_joint": 2.2,
-            "RR_calf_joint": 1.8,
+            "RR_thigh_joint": 0.8,
+            "RR_calf_joint": -1.8,
             "RL_hip_joint": -0.1,
-            "RL_thigh_joint": -2.2,
-            "RL_calf_joint": -1.8,
+            "RL_thigh_joint": -0.8,
+            "RL_calf_joint": 1.8,
             ".*_foot_joint": 0.0,
         },
         joint_vel={".*": 0.0},  # 所有关节速度初始为 0

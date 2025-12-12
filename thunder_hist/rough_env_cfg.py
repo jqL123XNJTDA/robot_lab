@@ -553,10 +553,7 @@ class ThunderHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.terminations.illegal_contact = None
         
         # 禁用其他课程学习，专注于基本运动训练
-        self.curriculum.command_levels = None
-        self.curriculum.disturbance_levels = None
-        self.curriculum.mass_randomization_levels = None  
-        self.curriculum.com_randomization_levels = None
+  
 
         # ------------------------------Commands------------------------------
         # Apply command parameters

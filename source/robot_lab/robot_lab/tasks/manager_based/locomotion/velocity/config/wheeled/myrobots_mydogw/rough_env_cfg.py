@@ -338,21 +338,21 @@ class MyDogRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 class MyDogHistCommandParams:
     """HIM 版本的命令参数 - 与 ThunderHist 一致"""
     # 速度命令范围
-    lin_vel_x: tuple = (-1.0, 1.0)
-    lin_vel_y: tuple = (-1.0, 1.0)
-    ang_vel_z: tuple = (-1.0, 1.0)
+    lin_vel_x: tuple = (0, 0)
+    lin_vel_y: tuple = (0, 0)
+    ang_vel_z: tuple = (0, 0)
 
 
 @configclass
 class MyDogHistEventParams:
-    """HIM 版本的事件随机化参数 - 与 ThunderHist 一致"""
+    """HIM 版本的事件随机化参数"""
     # 复位基座随机化
     reset_base_pose_range_x: tuple = (-0.5, 0.5)
     reset_base_pose_range_y: tuple = (-0.5, 0.5)
     reset_base_pose_range_z: tuple = (0.0, 0.2)
-    reset_base_pose_range_roll: tuple = (-3.14, 3.14)
-    reset_base_pose_range_pitch: tuple = (-3.14, 3.14)
-    reset_base_pose_range_yaw: tuple = (-3.14, 3.14)
+    reset_base_pose_range_roll: tuple = (-0.5, 0.5)   # 缩小范围，避免倒置
+    reset_base_pose_range_pitch: tuple = (-0.5, 0.5)  # 缩小范围，避免倒置
+    reset_base_pose_range_yaw: tuple = (-3.14, 3.14)  # yaw 可以全向
 
     reset_base_velocity_range_x: tuple = (-0.5, 0.5)
     reset_base_velocity_range_y: tuple = (-0.5, 0.5)
@@ -361,57 +361,57 @@ class MyDogHistEventParams:
     reset_base_velocity_range_pitch: tuple = (-0.5, 0.5)
     reset_base_velocity_range_yaw: tuple = (-0.5, 0.5)
 
-    # 外力/力矩随机化 - 与 ThunderHist 一致
+    # 外力/力矩随机化
     external_force_range: tuple = (-20.0, 20.0)
     external_torque_range: tuple = (-10.0, 10.0)
 
 
 @configclass
 class MyDogHistRewardWeights:
-    """HIM 版本的奖励权重配置 - 与 ThunderHist 一致"""
+    """HIM 版本的奖励权重配置 - 原地平衡训练"""
 
     # 通用
     is_terminated: float = 0.0
 
-    # 速度跟踪奖励
-    track_lin_vel_xy_exp: float = 6.0
-    track_ang_vel_z_exp: float = 3.0
-    upward: float = 2.0
+    # 速度跟踪奖励 (原地平衡不需要)
+    track_lin_vel_xy_exp: float = 0.0
+    track_ang_vel_z_exp: float = 0.0
+    upward: float = 3.0  # 增大，鼓励站直
 
-    # 根部惩罚
+    # 根部惩罚 (原地平衡关键)
     lin_vel_z_l2: float = -2.0
-    ang_vel_xy_l2: float = -0.05
-    flat_orientation_l2: float = 0.1
-    base_height_l2: float = 0.0
+    ang_vel_xy_l2: float = -0.5  # 增大，减少晃动
+    flat_orientation_l2: float = -1.0  # 启用，保持水平
+    base_height_l2: float = 0.0  # 启用，保持目标高度
     body_lin_acc_l2: float = 0.0
 
     # 关节惩罚
-    joint_torques_l2: float = -1e-5
+    joint_torques_l2: float = -2.5e-5
     joint_torques_wheel_l2: float = 0.0
     joint_vel_l2: float = 0.0
     joint_vel_wheel_l2: float = 0.0
     joint_acc_l2: float = -2.5e-7
-    joint_acc_wheel_l2: float = 0.0
-    joint_pos_limits: float = -4.0
+    joint_acc_wheel_l2: float = -2.5e-9
+    joint_pos_limits: float = -5.0
     joint_vel_limits: float = 0.0
     joint_power: float = -2e-5
     stand_still: float = -2.0
     joint_pos_penalty: float = -1.0
     wheel_vel_penalty: float = 0.0
-    joint_mirror: float = -0.05
+    joint_mirror: float = 0.0
 
     # 动作惩罚
-    action_rate_l2: float = -0.01
+    action_rate_l2: float = -0.05
 
-    # 接触惩罚
-    undesired_contacts: float = -1.0
-    contact_forces: float = -6e-4
+    # 接触惩罚 (原地平衡关键)
+    undesired_contacts: float = -5.0  # 增大，惩罚非脚部接触
+    contact_forces: float = -1.5e-4
 
     # 其他奖励
     feet_air_time: float = 0.0
     feet_contact: float = 0.0
-    feet_contact_without_cmd: float = 0.1
-    feet_stumble: float = -5.0
+    feet_contact_without_cmd: float = 1  # 增大，鼓励四脚着地
+    feet_stumble: float = 0.0
     feet_slide: float = 0.0
     feet_height: float = 0.0
     feet_height_body: float = 0.0
@@ -887,11 +887,9 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.terminations.illegal_contact = None
 
         # ------------------------------Curriculum------------------------------
-        # 禁用课程学习 - 与 ThunderHist 一致
-        self.curriculum.command_levels = None
-        self.curriculum.disturbance_levels = None
-        self.curriculum.mass_randomization_levels = None
-        self.curriculum.com_randomization_levels = None
+        # 禁用课程学习 - HIM 不使用 curriculum
+        self.curriculum.command_levels_lin_vel = None
+        self.curriculum.command_levels_ang_vel = None
 
         # ------------------------------Commands------------------------------
         # 应用命令参数 - 与 ThunderHist 一致
