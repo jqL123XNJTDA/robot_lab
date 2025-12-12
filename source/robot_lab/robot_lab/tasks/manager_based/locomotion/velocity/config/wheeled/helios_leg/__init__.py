@@ -30,3 +30,37 @@ gym.register(
         "cusrl_cfg_entry_point": f"{agents.__name__}.cusrl_ppo_cfg:HeliosLegRoughTrainerCfg",
     },
 )
+
+##
+# Jump environments - 跳跃环境
+##
+
+gym.register(
+    id="RobotLab-Isaac-Jump-Flat-Helios-Leg-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.jump_env_cfg:HeliosLegJumpEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:HeliosLegJumpPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="RobotLab-Isaac-Jump-Flat-Helios-Leg-LowAssist-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.jump_env_cfg:HeliosLegJumpEnvCfg_LowAssist",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:HeliosLegJumpLowAssistPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="RobotLab-Isaac-Jump-Flat-Helios-Leg-NoAssist-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.jump_env_cfg:HeliosLegJumpEnvCfg_NoAssist",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:HeliosLegJumpNoAssistPPORunnerCfg",
+    },
+)

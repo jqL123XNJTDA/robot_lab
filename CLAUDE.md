@@ -462,3 +462,173 @@ docker compose --env-file .env.base --file docker-compose.yaml down
 - **讨论社区**：
   - GitHub Discussions：https://github.com/fan-ziqi/robot_lab/discussions
   - Discord：http://www.robotsfan.com/dc_robot_lab
+
+## Helios 双足轮腿机器人跳跃功能
+
+### 功能概述
+
+为 Helios (LW-360 Gen2V1) 双足轮腿机器人实现向前跳跃功能。参考 GO2_Spring_Jump（基于 IsaacGym）项目，适配到 Isaac Lab Manager-Based RL 框架。
+
+**目标行为**：
+1. 跳跃前保持向前运动
+2. 接收跳跃指令后向前跳跃
+3. 达到目标高度（约 0.45-0.5m）
+4. 稳定落地并继续向前运动
+
+### 状态机设计
+
+```
+向前运动 (jump_cmd=0) → 起跳 (jump_cmd=1) → 腾空 (was_in_flight) → 落地 (has_jumped) → 继续运动
+```
+
+**状态追踪变量**：
+- `jump_cmd`：跳跃命令（0=运动，1=跳跃）
+- `was_in_flight`：是否曾经腾空
+- `has_jumped`：是否已完成跳跃
+- `init_poses`：起跳前位置（用于计算跳跃距离）
+- `landing_poses`：落地位置
+
+**腾空判定**：双脚接触力均低于阈值（1.0N）
+
+### 文件结构
+
+```
+tasks/manager_based/locomotion/velocity/
+├── mdp/
+│   ├── jump_commands.py    # 跳跃命令控制器
+│   ├── jump_rewards.py     # 跳跃奖励函数
+│   └── __init__.py         # 导入跳跃模块
+└── config/wheeled/helios_leg/
+    ├── jump_env_cfg.py     # 跳跃环境配置
+    ├── agents/
+    │   └── rsl_rl_ppo_cfg.py  # PPO 配置（含跳跃版本）
+    └── __init__.py         # 环境注册
+```
+
+### 核心组件
+
+#### 1. 跳跃命令控制器 (`jump_commands.py`)
+
+```python
+class JumpCommand(CommandTerm):
+    """跳跃命令控制器 - 管理跳跃状态机"""
+
+    # 状态张量
+    was_in_flight: torch.Tensor  # 是否曾腾空
+    has_jumped: torch.Tensor     # 是否已完成跳跃
+    init_poses: torch.Tensor     # 起跳位置
+    landing_poses: torch.Tensor  # 落地位置
+
+    def _update_command(self):
+        # 检测腾空状态（双脚离地）
+        # 检测落地状态（腾空后重新接触）
+        # 更新状态机
+```
+
+**配置参数**：
+- `jump_trigger_range`：跳跃触发帧范围 (50, 60)
+- `contact_threshold`：接触力阈值 1.0N
+- `resampling_time_range`：episode 重采样时间
+
+#### 2. 跳跃奖励函数 (`jump_rewards.py`)
+
+| 奖励函数 | 权重 | 说明 |
+|---------|------|------|
+| `jump_vertical_velocity` | +16.0 | 腾空时 Z 轴速度奖励 |
+| `jump_flight_reward` | +2.0 | 成功腾空奖励 |
+| `jump_base_height_flight` | +3.0 | 腾空高度奖励（目标 0.5m） |
+| `jump_forward_velocity` | +5.0 | 腾空时前向速度跟踪 |
+| `jump_landing_position` | +25.0 | 落地位置精度奖励 |
+| `jump_landing_stability` | +10.0 | 落地稳定性奖励 |
+| `jump_wheel_lock` | -0.5 | 轮子空转惩罚 |
+| `jump_collision` | -50.0 | 碰撞惩罚 |
+
+#### 3. 辅助推力事件 (`events.py`)
+
+```python
+def push_robot_upward_for_jump(
+    env, env_ids, command_name,
+    velocity_range=(1.5, 2.2),  # 向上速度范围 [m/s]
+    probability=0.8,            # 推力概率
+    asset_cfg=SceneEntityCfg("robot"),
+):
+    """跳跃辅助推力 - 在起跳时给予向上速度"""
+    # 筛选条件：跳跃指令已触发 & 还未腾空过
+    # 随机给予向上速度
+```
+
+#### 4. 环境配置 (`jump_env_cfg.py`)
+
+三个训练阶段：
+- `HeliosLegJumpEnvCfg`：80% 辅助推力（初期训练）
+- `HeliosLegJumpEnvCfg_LowAssist`：30% 辅助推力（中期训练）
+- `HeliosLegJumpEnvCfg_NoAssist`：无辅助推力（最终训练）
+
+### 已注册环境
+
+```bash
+# 查看跳跃环境
+python scripts/tools/list_envs.py | grep -i jump
+```
+
+- `RobotLab-Isaac-Jump-Flat-Helios-Leg-v0`
+- `RobotLab-Isaac-Jump-Flat-Helios-Leg-LowAssist-v0`
+- `RobotLab-Isaac-Jump-Flat-Helios-Leg-NoAssist-v0`
+
+### 训练命令
+
+```bash
+# 阶段1：高辅助推力训练（学习基本跳跃动作）
+python scripts/reinforcement_learning/rsl_rl/train.py \
+    --task=RobotLab-Isaac-Jump-Flat-Helios-Leg-v0 \
+    --headless \
+    --num_envs=4096
+
+# 阶段2：低辅助推力训练（减少依赖）
+python scripts/reinforcement_learning/rsl_rl/train.py \
+    --task=RobotLab-Isaac-Jump-Flat-Helios-Leg-LowAssist-v0 \
+    --resume \
+    --load_run <stage1_run> \
+    --headless
+
+# 阶段3：无辅助推力训练（最终策略）
+python scripts/reinforcement_learning/rsl_rl/train.py \
+    --task=RobotLab-Isaac-Jump-Flat-Helios-Leg-NoAssist-v0 \
+    --resume \
+    --load_run <stage2_run> \
+    --headless
+
+# 评估
+python scripts/reinforcement_learning/rsl_rl/play.py \
+    --task=RobotLab-Isaac-Jump-Flat-Helios-Leg-v0 \
+    --num_envs=64
+```
+
+### 设计决策
+
+| 决策项 | 选择 | 原因 |
+|--------|------|------|
+| 轮子控制 | 锁定轮子 | 跳跃时轮子空转无意义 |
+| 辅助推力 | 分阶段递减 | 帮助初期学习，最终自主跳跃 |
+| 落地目标 | 稳定落地为主 | 双足机器人平衡更关键 |
+| 基础策略 | 基于现有策略微调 | 利用已有行走能力 |
+
+### PPO 训练参数
+
+```python
+@configclass
+class HeliosLegJumpPPORunnerCfg(HeliosLegFlatPPORunnerCfg):
+    max_iterations = 50000
+    experiment_name = "helios_leg_jump"
+    # 较低学习率（跳跃任务更复杂）
+    algorithm.learning_rate = 1.0e-4
+    # 增加熵系数（鼓励探索跳跃动作）
+    algorithm.entropy_coef = 0.015
+```
+
+### 调试建议
+
+1. **TensorBoard 监控**：关注 `jump_vertical_velocity`、`jump_flight_reward` 曲线
+2. **可视化调试**：设置 `debug_vis=True` 查看跳跃命令状态
+3. **辅助推力调整**：如果学不会跳跃，增加 `velocity_range` 或 `probability`
+4. **奖励权重调整**：根据行为调整各奖励项权重

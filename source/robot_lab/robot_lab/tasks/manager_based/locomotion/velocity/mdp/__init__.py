@@ -18,3 +18,7 @@ from .observations import *  # noqa: F401, F403
 from .rewards import *  # noqa: F401, F403
 from .terminations import *  # noqa: F401, F403
 from .utils import *  # noqa: F401, F403
+
+# 跳跃模块
+from .jump_commands import *  # noqa: F401, F403
+from .jump_rewards import *  # noqa: F401, F403

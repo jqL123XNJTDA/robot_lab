@@ -46,3 +46,49 @@ class HeliosLegFlatPPORunnerCfg(HeliosLegRoughPPORunnerCfg):
 
         self.max_iterations = 8000
         self.experiment_name = "helios_leg_flat"
+
+
+@configclass
+class HeliosLegJumpPPORunnerCfg(HeliosLegFlatPPORunnerCfg):
+    """Helios 跳跃训练 PPO 配置
+
+    基于 Flat 配置，调整学习参数以适应跳跃任务。
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # 跳跃训练需要更多迭代
+        self.max_iterations = 50000
+        self.experiment_name = "helios_leg_jump"
+
+        # # 使用较低的学习率（跳跃任务更复杂）
+        # self.algorithm.learning_rate = 1.0e-4
+
+        # # 增加梯度裁剪（防止跳跃时的大梯度）
+        # self.algorithm.max_grad_norm = 1.0
+
+        # # 稍微增加熵系数（鼓励探索跳跃动作）
+        # self.algorithm.entropy_coef = 0.015
+
+
+@configclass
+class HeliosLegJumpLowAssistPPORunnerCfg(HeliosLegJumpPPORunnerCfg):
+    """Helios 跳跃训练 PPO 配置（低辅助推力阶段）"""
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.max_iterations = 30000
+        self.experiment_name = "helios_leg_jump_low_assist"
+
+
+@configclass
+class HeliosLegJumpNoAssistPPORunnerCfg(HeliosLegJumpPPORunnerCfg):
+    """Helios 跳跃训练 PPO 配置（无辅助推力阶段）"""
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.max_iterations = 30000
+        self.experiment_name = "helios_leg_jump_no_assist"

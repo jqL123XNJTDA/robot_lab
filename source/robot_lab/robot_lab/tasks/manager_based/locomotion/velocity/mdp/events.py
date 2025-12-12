@@ -15,6 +15,8 @@ from .utils import is_env_assigned_to_terrain
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
+from .jump_commands import JumpCommand
+
 
 def randomize_rigid_body_inertia(
     env: ManagerBasedEnv,
@@ -267,3 +269,71 @@ def reset_root_state_uniform(
         # set into the physics simulation
         asset.write_root_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=non_pit_env_ids)
         asset.write_root_velocity_to_sim(velocities, env_ids=non_pit_env_ids)
+
+
+def push_robot_upward_for_jump(
+    env: "ManagerBasedEnv",
+    env_ids: torch.Tensor,
+    command_name: str,
+    velocity_range: tuple[float, float] = (1.5, 2.2),
+    probability: float = 0.8,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+):
+    """跳跃辅助推力 - 在起跳时给予向上速度
+
+    训练初期帮助机器人学习跳跃动作。
+
+    筛选条件：
+    1. 跳跃指令已触发 (jump_cmd == 1)
+    2. 还未腾空过 (~was_in_flight)
+    3. 随机概率
+
+    Args:
+        env: 环境实例
+        env_ids: 当前活动的环境索引
+        command_name: 跳跃命令名称
+        velocity_range: 向上速度范围 [m/s]
+        probability: 推力概率
+        asset_cfg: 机器人资产配置
+    """
+    # 检查是否有跳跃命令
+    try:
+        jump_cmd: JumpCommand = env.command_manager.get_term(command_name)
+    except KeyError:
+        # 如果没有跳跃命令，跳过
+        return
+
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    # 获取跳跃状态
+    cmd = env.command_manager.get_command(command_name)
+    jump_active = cmd[:, 2] > 0
+    not_in_flight = ~jump_cmd.was_in_flight
+
+    # 筛选条件：跳跃指令已触发且还未腾空
+    eligible = jump_active & not_in_flight
+
+    # 随机决定是否推动
+    random_mask = torch.rand(env.num_envs, device=env.device) < probability
+    push_mask = eligible & random_mask
+
+    if push_mask.any():
+        push_ids = push_mask.nonzero(as_tuple=False).flatten()
+
+        # 生成随机向上速度
+        up_velocity = torch.empty(len(push_ids), device=env.device).uniform_(
+            velocity_range[0], velocity_range[1]
+        )
+
+        # 获取当前速度（线速度 + 角速度，共 6 维）
+        root_lin_vel = asset.data.root_lin_vel_w.clone()
+        root_ang_vel = asset.data.root_ang_vel_w.clone()
+
+        # 添加向上速度
+        root_lin_vel[push_ids, 2] += up_velocity
+
+        # 拼接线速度和角速度
+        root_vel = torch.cat([root_lin_vel[push_ids], root_ang_vel[push_ids]], dim=-1)
+
+        # 写回仿真
+        asset.write_root_velocity_to_sim(root_vel, env_ids=push_ids)
