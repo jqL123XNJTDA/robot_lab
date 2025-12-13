@@ -402,7 +402,15 @@ def jump_flight_height(
     # 高度奖励
     current_height = asset.data.root_pos_w[:, 2]
     height_error = torch.abs(current_height - target_height)
-    reward = torch.exp(-height_error * 5.0) * in_flight.float()
+    height_reward = torch.exp(-height_error * 5.0)
+
+    # 重力投影 Z 分量：直立时为 -1，倾斜时偏离 -1
+    # 转换为 [0, 1] 范围：越接近 -1（直立），upright_factor 越接近 1
+    projected_gravity_z = asset.data.projected_gravity_b[:, 2]
+    upright_factor = torch.clamp(-projected_gravity_z, min=0, max=1)
+
+    # 综合奖励：高度 × 直立因子
+    reward = height_reward * upright_factor * in_flight.float()
 
     return reward
 
@@ -846,9 +854,17 @@ def jump_flight_vel_z(
     jump_triggered = cmd[:, 1] == 1.0
     active = jump_triggered & ~jump_cmd.has_jumped
 
-    # Z 轴速度奖励：只奖励正向速度（向上）
+    # Z 轴速度奖励：只奖励正向速度（向上），超过 0.5 m/s 饱和
     z_vel = asset.data.root_lin_vel_w[:, 2]
-    reward = torch.clamp(z_vel, min=0) * active.float()
+    vel_reward = torch.clamp(z_vel, min=0, max=0.5)
+
+    # 重力投影 Z 分量：直立时为 -1，倾斜时偏离 -1
+    # 转换为 [0, 1] 范围：越接近 -1（直立），upright_factor 越接近 1
+    projected_gravity_z = asset.data.projected_gravity_b[:, 2]
+    upright_factor = torch.clamp(-projected_gravity_z, min=0, max=1)
+
+    # 综合奖励：速度 × 直立因子
+    reward = vel_reward * upright_factor * active.float()
 
     return reward
 
