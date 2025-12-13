@@ -371,12 +371,12 @@ class MyDogHistRewardWeights:
     """HIM 版本的奖励权重配置 - 原地平衡训练"""
 
     # 通用
-    is_terminated: float = 0.0
+    is_terminated: float = -200
 
     # 速度跟踪奖励 (原地平衡不需要)
     track_lin_vel_xy_exp: float = 0.0
     track_ang_vel_z_exp: float = 0.0
-    upward: float = 3.0  # 增大，鼓励站直
+    upward: float = 0.0  # 增大，鼓励站直
 
     # 根部惩罚 (原地平衡关键)
     lin_vel_z_l2: float = -2.0
@@ -404,7 +404,7 @@ class MyDogHistRewardWeights:
     action_rate_l2: float = -0.05
 
     # 接触惩罚 (原地平衡关键)
-    undesired_contacts: float = -5.0  # 增大，惩罚非脚部接触
+    undesired_contacts: float = -20.0  # 增大，惩罚非脚部接触
     contact_forces: float = -1.5e-4
 
     # 其他奖励
@@ -883,8 +883,8 @@ class MyDogHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             self.disable_zero_weight_rewards()
 
         # ------------------------------Terminations------------------------------
-        # 与 ThunderHist 一致，禁用 illegal_contact
-        self.terminations.illegal_contact = None
+        # 启用碰撞终止（base_link 接触地面时重置 episode）
+        # self.terminations.illegal_contact = None
 
         # ------------------------------Curriculum------------------------------
         # 禁用课程学习 - HIM 不使用 curriculum
