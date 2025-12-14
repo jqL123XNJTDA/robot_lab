@@ -324,8 +324,9 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.observations.critic.joint_pos.params["wheel_asset_cfg"] = SceneEntityCfg(
             "robot", joint_names=self.wheel_joint_names
         )
-        # 基座线速度观测缩放
-        self.observations.policy.base_lin_vel.scale = 2.0
+        # 基座线速度观测缩放（如果存在）
+        if hasattr(self.observations.policy, 'base_lin_vel') and self.observations.policy.base_lin_vel is not None:
+            self.observations.policy.base_lin_vel.scale = 2.0
         # 基座角速度观测缩放
         self.observations.policy.base_ang_vel.scale = 0.25
         # 关节位置观测缩放
@@ -333,7 +334,8 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 关节速度观测缩放
         self.observations.policy.joint_vel.scale = 0.05
         # 禁用基座线速度观测（轮腿机器人通常不需要）
-        self.observations.policy.base_lin_vel = None
+        if hasattr(self.observations.policy, 'base_lin_vel'):
+            self.observations.policy.base_lin_vel = None
         # 禁用高度扫描观测
         self.observations.policy.height_scan = None
         # 设置观测的关节名称列表

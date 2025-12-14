@@ -117,10 +117,17 @@ from isaaclab.envs import (
     multi_agent_to_single_agent,
 )
 from isaaclab.utils.dict import print_dict
-from isaaclab.utils.io import dump_pickle, dump_yaml
+from isaaclab.utils.io import dump_yaml
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
+import pickle
+
+
+def dump_pickle(filename: str, data: object):
+    """Save data to a pickle file."""
+    with open(filename, "wb") as f:
+        pickle.dump(data, f)
 
 import robot_lab.tasks  # noqa: F401
 
