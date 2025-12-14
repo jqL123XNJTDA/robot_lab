@@ -74,13 +74,18 @@ class HeliosLegHistRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     - num_steps_per_env=200 (HIM: 4096×200)
     - max_grad_norm=10.0
     - obs_groups 配置 policy/critic 观测组分离
+
+    注意：HIM 训练使用自定义 HIMOnPolicyRunner，obs_groups 仅作为文档参考。
+    实际观测组映射由 runner 从环境自动检测：
+    - policy_groups: ["policy"] (27×5=135 dims)
+    - critic_groups: ["critic", "height_scan_group"] (150+187 dims)
     """
 
     num_steps_per_env = 200  # HIM 论文: 4096×200
     max_iterations = 20000
     save_interval = 100
     experiment_name = "helios_leg_hist_rough"
-    # HIM 风格: obs_groups 分组配置
+    # HIM 风格: obs_groups 分组配置（文档用途，实际由 HIMOnPolicyRunner 自动检测）
     # policy 只用 policy 观测组（不含 base_lin_vel）
     # critic 用 critic + height_scan_group（含 base_lin_vel + 高度扫描）
     obs_groups = {"policy": ["policy"], "critic": ["critic", "height_scan_group"]}
@@ -113,6 +118,11 @@ class HeliosLegHistFlatPPORunnerCfg(HeliosLegHistRoughPPORunnerCfg):
     """HIM 风格 PPO 配置 - Flat 环境
 
     Flat 环境无高度扫描，critic 只用 critic 观测组
+
+    注意：HIM 训练使用自定义 HIMOnPolicyRunner，obs_groups 仅作为文档参考。
+    实际观测组映射由 runner 从环境自动检测：
+    - policy_groups: ["policy"] (27×5=135 dims)
+    - critic_groups: ["critic"] (150 dims)
     """
 
     def __post_init__(self):
@@ -120,7 +130,7 @@ class HeliosLegHistFlatPPORunnerCfg(HeliosLegHistRoughPPORunnerCfg):
 
         self.max_iterations = 8000
         self.experiment_name = "helios_leg_hist_flat"
-        # Flat 环境无 height_scan_group，critic 只用 critic 观测组
+        # Flat 环境无 height_scan_group，critic 只用 critic 观测组（文档用途）
         self.obs_groups = {"policy": ["policy"], "critic": ["critic"]}
 
 
