@@ -684,38 +684,26 @@ def jump_track_ang_vel_z(
     std: float = 0.25,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Z 轴角速度追踪奖励（使用 jump_command）
+    """全阶段 Z 轴角速度惩罚（期望角速度为0）
 
-    在运动阶段、蓄力阶段和落地阶段追踪目标偏航角速度
+    惩罚任何非零的偏航角速度，保持机器人不旋转
 
     Args:
         env: 环境实例
-        command_name: 跳跃命令名称
-        std: 指数核标准差
+        command_name: 跳跃命令名称（未使用，保留接口兼容）
+        std: 未使用，保留接口兼容
         asset_cfg: 机器人资产配置
 
     Returns:
-        奖励张量 [num_envs]
+        角速度平方 [num_envs]，配合负权重使用
     """
     asset: RigidObject = env.scene[asset_cfg.name]
-    jump_cmd: JumpCommand = env.command_manager.get_term(command_name)
-    cmd = env.command_manager.get_command(command_name)
 
-    # 在运动阶段、蓄力阶段和落地阶段追踪角速度
-    # 腾空阶段不追踪（空中无法有效控制偏航）
-    in_flight = jump_cmd.was_in_flight & ~jump_cmd.has_jumped
-    active = ~in_flight  # 非腾空阶段
+    # Z 轴角速度平方惩罚（期望为0）
+    ang_vel_z = asset.data.root_ang_vel_b[:, 2]
+    penalty = torch.square(ang_vel_z)
 
-    if not active.any():
-        return torch.zeros(env.num_envs, device=env.device)
-
-    # Z 轴角速度追踪（指数核）
-    # 命令格式: [lin_vel_x, jump_cmd, ang_vel_z]
-    target_ang_vel_z = cmd[:, 2]  # ang_vel_z
-    ang_vel_error = torch.square(target_ang_vel_z - asset.data.root_ang_vel_b[:, 2])
-    reward = torch.exp(-ang_vel_error / std) * active.float()
-
-    return reward
+    return penalty
 
 
 def jump_track_lin_vel_x(
@@ -1201,6 +1189,45 @@ def jump_wrong_timing_penalty(
 
     # 惩罚：不该跳时向上速度越大惩罚越大
     penalty = upward_vel * should_not_jump.float()
+
+    return penalty
+
+
+def jump_idle_land_action_rate_penalty(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+) -> torch.Tensor:
+    """待机和落地阶段：动作平滑惩罚
+
+    在待机阶段（jump_cmd=0）和落地阶段（has_jumped=True），惩罚动作变化率。
+    这两个阶段机器人应该保持平稳，动作不应剧烈变化。
+
+    Args:
+        env: 环境实例
+        command_name: 跳跃命令名称
+
+    Returns:
+        惩罚张量 [num_envs]（正值，配合负权重使用）
+    """
+    jump_cmd: JumpCommand = env.command_manager.get_term(command_name)
+    cmd = env.command_manager.get_command(command_name)
+
+    # 待机阶段：jump_cmd == 0
+    jump_cmd_val = cmd[:, 1]
+    is_idle = jump_cmd_val == 0.0
+
+    # 落地阶段：has_jumped == True
+    has_landed = jump_cmd.has_jumped
+
+    # 在这两个阶段需要动作平滑
+    should_smooth = is_idle | has_landed
+
+    if not should_smooth.any():
+        return torch.zeros(env.num_envs, device=env.device)
+
+    # 动作变化率惩罚（当前动作与上一步动作的差异）
+    action_diff = env.action_manager.action - env.action_manager.prev_action
+    penalty = torch.sum(torch.square(action_diff), dim=1) * should_smooth.float()
 
     return penalty
 

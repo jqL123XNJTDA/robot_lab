@@ -40,8 +40,8 @@
         <!-- 灯光 -->
         <light directional="true" diffuse=".4 .4 .4" specular="0.1 0.1 0.1" pos="0 0 5.0" dir="0 0 -1" castshadow="false"/>
         <light directional="true" diffuse=".6 .6 .6" specular="0.2 0.2 0.2" pos="0 0 4" dir="0 0 -1"/>
-        <!-- 地面 -->
-        <geom name="ground" type="plane" size="0 0 1" pos="0.001 0 0" quat="1 0 0 0" material="matplane" condim="1" conaffinity='15'/>
+        <!-- 地面 (摩擦力与 Isaac Lab 一致: static=1.0, dynamic=1.0) -->
+        <geom name="ground" type="plane" size="0 0 1" pos="0.001 0 0" quat="1 0 0 0" material="matplane" condim="3" conaffinity='15' friction="1.0 0.005 0.0001"/>
 
         <body name="base_link" pos='0 0 0.32'>
             <!-- IMU 传感器位置 -->
@@ -83,7 +83,7 @@
                         <!-- 视觉网格 -->
                         <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.90196 0.92157 0.92157 1" mesh="right_foot_link" />
                         <!-- 碰撞体: 轮子 -->
-                        <geom name="right_wheel_collision" type="cylinder" size="0.05 0.02" pos="0 0.02 0" quat="0.707105 0.707108 0 0" group="2"/>
+                        <geom name="right_wheel_collision" type="cylinder" size="0.05 0.02" pos="0 0.02 0" quat="0.707105 0.707108 0 0" group="2" friction="1.0 0.005 0.0001"/>
                     </body>
                 </body>
             </body>
@@ -113,7 +113,7 @@
                         <!-- 视觉网格 -->
                         <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.89804 0.91765 0.92941 1" mesh="left_foot_link" />
                         <!-- 碰撞体: 轮子 -->
-                        <geom name="left_wheel_collision" type="cylinder" size="0.05 0.02" pos="0 -0.02 0" quat="0.707105 0.707108 0 0" group="2"/>
+                        <geom name="left_wheel_collision" type="cylinder" size="0.05 0.02" pos="0 -0.02 0" quat="0.707105 0.707108 0 0" group="2" friction="1.0 0.005 0.0001"/>
                     </body>
                 </body>
             </body>

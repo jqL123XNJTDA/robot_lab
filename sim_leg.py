@@ -93,22 +93,22 @@ class RobotConfig:
 
         # PD controller stiffness Kp [Nm/rad] - 与 helios_leg.py 匹配
         self.kp = {
-            "right_thigh_joint": 100.0, "left_thigh_joint": 100.0,
-            "right_calf_joint": 100.0, "left_calf_joint": 100.0,
+            "right_thigh_joint": 120.0, "left_thigh_joint": 120.0,
+            "right_calf_joint": 120.0, "left_calf_joint": 120.0,
             "right_foot_joint": 0.0, "left_foot_joint": 0.0,  # Wheels use velocity control, stiffness=0
         }
 
         # PD controller damping Kd [Nm*s/rad] - 与 helios_leg.py 匹配
         self.kd = {
             "right_thigh_joint": 5.0, "left_thigh_joint": 5.0,
-            "right_calf_joint": 5.0, "left_calf_joint": 5.0,
-            "right_foot_joint": 2.0, "left_foot_joint": 2.0,
+            "right_calf_joint":5.0, "left_calf_joint": 5.0,
+            "right_foot_joint": 1, "left_foot_joint": 1,
         }
 
         # Integral gain Ki [Nm/(rad*s)]
         self.ki = {
-            "right_thigh_joint": 2.0, "left_thigh_joint": 2.0,
-            "right_calf_joint": 2.0, "left_calf_joint": 2.0,
+            "right_thigh_joint": 0.0, "left_thigh_joint": 0.0,
+            "right_calf_joint": 0.0, "left_calf_joint": 0.0,
             "right_foot_joint": 0.0, "left_foot_joint": 0.0,
         }
 
@@ -121,9 +121,9 @@ class RobotConfig:
 
         # Torque limit [Nm]
         self.tau_limit = {
-            "right_thigh_joint": 40.0, "left_thigh_joint": 40.0,
-            "right_calf_joint": 40.0, "left_calf_joint": 40.0,
-            "right_foot_joint": 40.0, "left_foot_joint": 40.0,
+            "right_thigh_joint": 200.0, "left_thigh_joint": 200.0,
+            "right_calf_joint": 200.0, "left_calf_joint": 200.0,
+            "right_foot_joint": 60.0, "left_foot_joint": 60.0,
         }
 
         # Action scaling (must match training config!)
@@ -366,7 +366,7 @@ jump_manual_control = {
     "enabled": True,
     "lin_vel_x": 0.0,        # 前向速度设为0
     "ang_vel_z": 0.0,        # 无偏航
-    "hold_duration": 0.5,    # jump_cmd=1 保持时间（按一下保持0.5秒）
+    "hold_duration": 1.0,    # jump_cmd=1 保持时间（按一下保持1.0秒）
     "state": "idle",         # 状态: idle / jumping
     "frame_counter": 0,      # 当前阶段帧计数
     "space_pressed": False,  # 空格键触发标志
@@ -1028,7 +1028,7 @@ if __name__ == '__main__':
                         default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/helios_leg/mjcf/helios_leg.xml',
                         help='Path to MuJoCo XML model')
     parser.add_argument('--policy-path', type=str,
-                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_jump/2025-12-13_23-03-26/exported/policy.pt',
+                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_jump/2025-12-14_18-15-34/exported/policy.pt',
                         help='Path to trained policy (.pt)')
     parser.add_argument('--duration', type=float, default=120.0, help='Simulation duration [s]')
     parser.add_argument('--dt', type=float, default=0.001, help='Physics timestep [s]')

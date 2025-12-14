@@ -120,16 +120,24 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if args_cli.keyboard:
         env_cfg.scene.num_envs = 1
         env_cfg.terminations.time_out = None
-        env_cfg.commands.base_velocity.debug_vis = False
-        config = Se2KeyboardCfg(
-            v_x_sensitivity=env_cfg.commands.base_velocity.ranges.lin_vel_x[1],
-            v_y_sensitivity=env_cfg.commands.base_velocity.ranges.lin_vel_y[1],
-            omega_z_sensitivity=env_cfg.commands.base_velocity.ranges.ang_vel_z[1],
-        )
-        controller = Se2Keyboard(config)
-        env_cfg.observations.policy.velocity_commands = ObsTerm(
-            func=lambda env: torch.tensor(controller.advance(), dtype=torch.float32).unsqueeze(0).to(env.device),
-        )
+        # jump 环境使用 jump_command，而非 base_velocity
+        if env_cfg.commands.base_velocity is not None:
+            env_cfg.commands.base_velocity.debug_vis = False
+            config = Se2KeyboardCfg(
+                v_x_sensitivity=env_cfg.commands.base_velocity.ranges.lin_vel_x[1],
+                v_y_sensitivity=env_cfg.commands.base_velocity.ranges.lin_vel_y[1],
+                omega_z_sensitivity=env_cfg.commands.base_velocity.ranges.ang_vel_z[1],
+            )
+            controller = Se2Keyboard(config)
+            env_cfg.observations.policy.velocity_commands = ObsTerm(
+                func=lambda env: torch.tensor(controller.advance(), dtype=torch.float32).unsqueeze(0).to(env.device),
+            )
+        elif hasattr(env_cfg.commands, "jump_command") and env_cfg.commands.jump_command is not None:
+            # jump 环境：禁用跳跃命令的自动触发，改为手动控制
+            env_cfg.commands.jump_command.debug_vis = False
+            # 设置较大的触发范围，让手动控制接管
+            env_cfg.commands.jump_command.jump_trigger_range = (99999, 100000)
+            print("[INFO] Jump 环境 keyboard 模式：跳跃由空格键手动触发")
 
     # ========== 跳跃命令手动控制模式 ==========
     # 按空格触发跳跃：[0,1,0]，松开后回到 [0,0,0]
@@ -444,15 +452,20 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     jump_cmd = 0.0
 
                 # 构造命令: [lin_vel_x, jump_cmd, ang_vel_z]
-                # 按空格: [0, 1, 0]，没按: [0, 0, 0]
-                manual_cmd = torch.tensor(
-                    [[jump_manual_control["lin_vel_x"], jump_cmd, jump_manual_control["ang_vel_z"]]],
-                    dtype=torch.float32,
-                    device=obs.device
-                ).expand(num_envs, -1)
-
-                # 注入到观测的 velocity_commands 位置 (索引 6-8)
-                obs[:, 6:9] = manual_cmd
+                # keyboard 模式：保留 Se2Keyboard 的速度控制，只修改 jump_cmd
+                # 非 keyboard 模式：使用固定速度 [0, jump_cmd, 0]
+                if args_cli.keyboard:
+                    # 保留 obs 中的 lin_vel_x 和 ang_vel_z（来自 Se2Keyboard）
+                    # 只修改 jump_cmd（索引 7）
+                    obs[:, 7] = jump_cmd
+                else:
+                    manual_cmd = torch.tensor(
+                        [[jump_manual_control["lin_vel_x"], jump_cmd, jump_manual_control["ang_vel_z"]]],
+                        dtype=torch.float32,
+                        device=obs.device
+                    ).expand(num_envs, -1)
+                    # 注入到观测的 velocity_commands 位置 (索引 6-8)
+                    obs[:, 6:9] = manual_cmd
 
                 # 打印当前状态（每 50 帧）
                 # if timestep % 50 == 0:

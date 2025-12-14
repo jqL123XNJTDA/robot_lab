@@ -69,7 +69,7 @@ class HeliosLegJumpPPORunnerCfg(HeliosLegFlatPPORunnerCfg):
         # self.algorithm.max_grad_norm = 1.0
 
         # # 稍微增加熵系数（鼓励探索跳跃动作）
-        # self.algorithm.entropy_coef = 0.015
+        self.algorithm.entropy_coef = 0.005
 
 
 @configclass

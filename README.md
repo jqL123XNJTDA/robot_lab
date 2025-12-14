@@ -458,3 +458,6 @@ The project uses some code from the following open-source code repositories:
 
 - [linden713/humanoid_amp](https://github.com/linden713/humanoid_amp)
 - [HybridRobotics/whole_body_tracking](https://github.com/HybridRobotics/whole_body_tracking)
+
+## helios_leg能完成原地向上跳跃
+/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_jump/2025-12-14_18-15-34/exported/policy.pt
