@@ -430,7 +430,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                         jump_manual_control["space_pressed"] = False
                         jump_manual_control["state"] = "jumping"
                         jump_manual_control["frame_counter"] = 0
-                        print(f"[Jump][Step {timestep}] >>> 跳跃触发! jump_cmd=1")
+                        # print(f"[Jump][Step {timestep}] >>> 跳跃触发! jump_cmd=1")
 
                 elif state == "jumping":
                     jump_cmd = 1.0
@@ -438,7 +438,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     if frame >= hold_frames:
                         jump_manual_control["state"] = "idle"
                         jump_manual_control["frame_counter"] = 0
-                        print(f"[Jump][Step {timestep}] >>> 跳跃结束, 等待下一次 (按空格)")
+                        # print(f"[Jump][Step {timestep}] >>> 跳跃结束, 等待下一次 (按空格)")
 
                 else:
                     jump_cmd = 0.0
@@ -455,8 +455,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 obs[:, 6:9] = manual_cmd
 
                 # 打印当前状态（每 50 帧）
-                if timestep % 50 == 0:
-                    print(f"[Jump][Step {timestep}] state={state}, cmd=[0, {jump_cmd:.1f}, 0]")
+                # if timestep % 50 == 0:
+                #     print(f"[Jump][Step {timestep}] state={state}, cmd=[0, {jump_cmd:.1f}, 0]")
 
             # ==========================================
             # obs[:, 6:9] = [0,0,0]
@@ -601,9 +601,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     max_height = base_heights.max().item()
                     min_height = base_heights.min().item()
                     
-                    # print(f"[INFO][Step {timestep}] {body_name} 高度: "
-                    #       f"Env0={env0_height:.3f}m, mean={mean_height:.3f}m, "
-                    #       f"min={min_height:.3f}m, max={max_height:.3f}m")
+                    print(f"[INFO][Step {timestep}] {body_name} 高度: "
+                          f"Env0={env0_height:.3f}m, mean={mean_height:.3f}m, "
+                          f"min={min_height:.3f}m, max={max_height:.3f}m")
             # ====================================
 
         timestep += 1  # 始终递增 timestep 用于调试

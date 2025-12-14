@@ -359,6 +359,20 @@ class Cmd:
 vel_cmd = Cmd()
 
 
+# ============================================================================
+# 跳跃命令手动控制模式（参考 play_jump.py）
+# ============================================================================
+jump_manual_control = {
+    "enabled": True,
+    "lin_vel_x": 0.0,        # 前向速度设为0
+    "ang_vel_z": 0.0,        # 无偏航
+    "hold_duration": 0.5,    # jump_cmd=1 保持时间（按一下保持0.5秒）
+    "state": "idle",         # 状态: idle / jumping
+    "frame_counter": 0,      # 当前阶段帧计数
+    "space_pressed": False,  # 空格键触发标志
+}
+
+
 # Control mode state machine
 class ControlMode:
     NORMAL = 0       # Policy control (default)
@@ -565,10 +579,10 @@ def start_keyboard_listener():
             pose_ctrl.decrease_speed()
 
         # Special key controls
+        # 空格键触发跳跃（参考 play_jump.py）
         if key == pynput_keyboard.Key.space:
-            if current_q_global is not None:
-                pose_ctrl.toggle_mode(current_q_global)
-                vel_cmd.stop_all()
+            jump_manual_control["space_pressed"] = True
+            print(f"[Jump] 空格键按下，触发跳跃!")
         elif key == pynput_keyboard.Key.up:
             if pd_tuner:
                 pd_tuner.increase_kp()
@@ -804,15 +818,12 @@ def run_mujoco(policy, mujoco_model_path, sim_duration, dt, decimation,
         print("Helios Leg Keyboard Controls")
         print("="*70)
         print("  Velocity Control:")
-        print("    W/S: Forward/Backward (vx) - Note: may not work for this robot")
-        print("    A/D: Left/Right (vy) - Primary movement direction")
+        print("    W/S: Forward/Backward (vx)")
         print("    Q/E: Counter-Clockwise/Clockwise (yaw)")
         print("")
-        print("  Control Mode Toggle (Space - 4 stages):")
-        print("    1st press: FREEZE - Stop target_q updates")
-        print("    2nd press: INTERPOLATE to Pose 1")
-        print("    3rd press: INTERPOLATE to Pose 2")
-        print("    4th press: RESUME normal policy control")
+        print("  Jump Control (Space):")
+        print("    按空格键触发跳跃，jump_cmd=1 保持 0.5 秒后自动回到 0")
+        print("    命令格式: [vx, jump_cmd, vyaw]")
         print("")
         print("  PID Tuning:")
         print("    [/]: Select joint type (thigh/calf/foot)")
@@ -873,6 +884,38 @@ def run_mujoco(policy, mujoco_model_path, sim_duration, dt, decimation,
             # Policy control (at decimation rate)
             if step % decimation == 0:
                 if pose_ctrl.mode == ControlMode.NORMAL:
+                    # ========== 跳跃命令状态机处理（参考 play_jump.py）==========
+                    step_dt = dt * decimation  # 控制周期
+                    hold_frames = int(jump_manual_control["hold_duration"] / step_dt)
+
+                    state = jump_manual_control["state"]
+                    frame = jump_manual_control["frame_counter"]
+
+                    # 简化状态机：idle -> jumping -> idle
+                    if state == "idle":
+                        jump_cmd = 0.0
+                        if jump_manual_control["space_pressed"]:
+                            jump_manual_control["space_pressed"] = False
+                            jump_manual_control["state"] = "jumping"
+                            jump_manual_control["frame_counter"] = 0
+                            print(f"[Jump][Step {step}] >>> 跳跃触发! jump_cmd=1")
+
+                    elif state == "jumping":
+                        jump_cmd = 1.0
+                        jump_manual_control["frame_counter"] += 1
+                        if frame >= hold_frames:
+                            jump_manual_control["state"] = "idle"
+                            jump_manual_control["frame_counter"] = 0
+                            print(f"[Jump][Step {step}] >>> 跳跃结束, 等待下一次 (按空格)")
+
+                    else:
+                        jump_cmd = 0.0
+
+                    # 更新 vel_cmd 用于观测构建
+                    # velocity_commands = [vx, jump_cmd, vyaw]
+                    vel_cmd.vy = jump_cmd  # 将 jump_cmd 放入 vy 位置
+                    # ==========================================
+
                     # Build observation
                     obs, proj_gravity = get_obs(data, vel_cmd, last_action, debug=debug)
 
@@ -985,7 +1028,7 @@ if __name__ == '__main__':
                         default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/helios_leg/mjcf/helios_leg.xml',
                         help='Path to MuJoCo XML model')
     parser.add_argument('--policy-path', type=str,
-                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_jump/2025-12-13_15-29-40/exported/policy.pt',
+                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_jump/2025-12-13_23-03-26/exported/policy.pt',
                         help='Path to trained policy (.pt)')
     parser.add_argument('--duration', type=float, default=120.0, help='Simulation duration [s]')
     parser.add_argument('--dt', type=float, default=0.001, help='Physics timestep [s]')
@@ -1023,8 +1066,8 @@ if __name__ == '__main__':
         print("\n" + "="*70)
         print("Keyboard Control Enabled")
         print("="*70)
-        print("  Velocity: W/S (vx), A/D (vy), Q/E (yaw)")
-        print("  Mode: Space (toggle freeze/interpolate/resume)")
+        print("  Velocity: W/S (vx), Q/E (yaw)")
+        print("  Jump: Space (触发跳跃, 保持0.5秒)")
         print("  PID Tuning: [/] (select), Up/Down (Kp), Left/Right (Kd)")
         print("  Info: M (show poses), P (print PID)")
         print("="*70)

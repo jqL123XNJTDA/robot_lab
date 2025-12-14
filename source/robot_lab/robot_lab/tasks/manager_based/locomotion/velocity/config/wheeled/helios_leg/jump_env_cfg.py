@@ -38,7 +38,7 @@ class HeliosLegJumpRewardsCfg(HeliosLegRewardsCfg):
     # 待机阶段（jump_cmd=0）：保持目标高度惩罚
     jump_pre_charge_height = RewTerm(
         func=mdp.jump_pre_charge_height,
-        weight=-100,  # 负权重，惩罚偏离目标高度
+        weight=-200,  # 负权重，惩罚偏离目标高度
         params={
             "command_name": "jump_command",
             "target_height": 0.25,  # 待机时目标高度
@@ -52,7 +52,7 @@ class HeliosLegJumpRewardsCfg(HeliosLegRewardsCfg):
     # 腾空阶段：高度奖励
     jump_flight_height = RewTerm(
         func=mdp.jump_flight_height,
-        weight=100.0,
+        weight=50.0,
         params={
             "command_name": "jump_command",
             "target_height": 0.5,  # 目标跳跃高度
@@ -105,10 +105,10 @@ class HeliosLegJumpRewardsCfg(HeliosLegRewardsCfg):
     # 落地阶段：恢复目标高度惩罚
     jump_land_height = RewTerm(
         func=mdp.jump_land_height,
-        weight=0,  # 负权重，惩罚偏离目标高度
+        weight=-100,  # 负权重，惩罚偏离目标高度
         params={
             "command_name": "jump_command",
-            "target_height": 0.32,  # 落地后恢复到运动时目标高度
+            "target_height": 0.25,  # 落地后恢复到运动时目标高度
             "asset_cfg": SceneEntityCfg("robot"),
         },
     )
@@ -152,7 +152,7 @@ class HeliosLegJumpRewardsCfg(HeliosLegRewardsCfg):
   
 
     # 动作平滑惩罚
-    jump_action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.02)
+    jump_action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
 
     # === 错误时机跳跃惩罚 ===
     # 当 jump_cmd < 0.5 时惩罚向上速度，防止不该跳时乱跳
@@ -193,9 +193,9 @@ class HeliosLegJumpEnvCfg(HeliosLegFlatEnvCfg):
                 attr.weight = 0.0
 
         
-        self.rewards.flat_orientation_l2.weight = -120
-        self.rewards.ang_vel_xy_l2.weight = -0.05
-        self.rewards.is_terminated.weight = -300
+        self.rewards.flat_orientation_l2.weight = -100
+        self.rewards.ang_vel_xy_l2.weight = -0.1
+        self.rewards.is_terminated.weight = -200
 
         # 基座高度惩罚（禁用，改用 base_height_reward）
         # self.rewards.base_height_l2.weight = -50
@@ -211,7 +211,7 @@ class HeliosLegJumpEnvCfg(HeliosLegFlatEnvCfg):
   
    
         # 反向镜像奖励（左右关节角度符号相反: left = -right）
-        self.rewards.joint_mirror_neg.weight = -30
+        self.rewards.joint_mirror_neg.weight = -70
         self.rewards.joint_mirror_neg.params["mirror_joints"] = [
             ["right_thigh_joint", "left_thigh_joint"],
             ["right_calf_joint", "left_calf_joint"],
@@ -219,11 +219,11 @@ class HeliosLegJumpEnvCfg(HeliosLegFlatEnvCfg):
 
         # === 动作惩罚 ===
         # 动作变化率惩罚（平滑动作）
-        self.rewards.action_rate_l2.weight = -0.02
+        self.rewards.action_rate_l2.weight = 0
 
         # === 接触传感器相关 ===
         # 非期望接触惩罚（除轮子外的接触）
-        self.rewards.undesired_contacts.weight = -10.0
+        self.rewards.undesired_contacts.weight = -30.0
         self.rewards.undesired_contacts.params["sensor_cfg"].body_names = [f"^(?!.*{self.foot_link_name}).*"]
         self.rewards.undesired_contacts.params["threshold"] = 1.0
 
@@ -275,7 +275,7 @@ class HeliosLegJumpEnvCfg(HeliosLegFlatEnvCfg):
         self.events.randomize_push_robot = None
         self.events.randomize_apply_external_force_torque = None
         # ------------------------------Episode 配置------------------------------
-        self.episode_length_s = 5.0
+        self.episode_length_s = 4.0
         
         # ------------------------------Curriculum 课程学习配置------------------------------
         # 禁用速度课程（跳跃不需要）
