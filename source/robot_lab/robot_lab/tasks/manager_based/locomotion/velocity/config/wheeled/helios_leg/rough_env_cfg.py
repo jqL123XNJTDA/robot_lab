@@ -12,14 +12,16 @@ Helios Leg (LW-360 Gen2V1) 双足轮腿机器人 Rough 环境配置。
 
 import isaaclab.terrains as terrain_gen
 from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import SceneEntityCfg, ObservationTermCfg as ObsTerm, ObservationGroupCfg as ObsGroup
 from isaaclab.utils import configclass
+from isaaclab.utils.noise import UniformNoiseCfg as Unoise
 
 import robot_lab.tasks.manager_based.locomotion.velocity.mdp as mdp
 from robot_lab.tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
     ActionsCfg,
     LocomotionVelocityRoughEnvCfg,
     RewardsCfg,
+    ObservationsCfg,
 )
 
 ##
@@ -47,6 +49,161 @@ ROUGH_ROAD_CFG = terrain_gen.TerrainGeneratorCfg(
         ),
     },
 )
+
+
+@configclass
+class HeliosLegHistObservationsCfg(ObservationsCfg):
+    """HIM风格观测配置 - 带5帧历史信息
+
+    基于 HIM (Hybrid Internal Model) 论文：
+    - Policy 只用本体感知（不含 base_lin_vel）
+    - Critic 可访问特权信息（含 base_lin_vel）
+    - 5帧历史观测用于提取环境动态信息
+    """
+
+    @configclass
+    class PolicyCfg(ObsGroup):
+        """Policy观测配置 - 带5帧历史，不含 base_lin_vel（只用本体感知）"""
+
+        # 基座角速度 (scale=0.25 参照 HIM)
+        base_ang_vel = ObsTerm(
+            func=mdp.base_ang_vel,
+            noise=Unoise(n_min=-0.2, n_max=0.2),
+            clip=(-100.0, 100.0),
+            scale=0.25,
+        )
+
+        # 投影重力向量
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 速度命令
+        velocity_commands = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "base_velocity"},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 关节位置观测（轮子位置设为0）
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel_without_wheel,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True),
+                "wheel_asset_cfg": SceneEntityCfg("robot", joint_names=".*_foot_joint"),
+            },
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 关节速度观测 (scale=0.05 参照 HIM)
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
+            noise=Unoise(n_min=-1.5, n_max=1.5),
+            clip=(-100.0, 100.0),
+            scale=0.05,
+        )
+
+        # 上一步动作
+        actions = ObsTerm(
+            func=mdp.last_action,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+            self.history_length = 5  # HIM: 5帧历史
+
+    @configclass
+    class CriticCfg(ObsGroup):
+        """Critic观测配置 - 带5帧历史，含 base_lin_vel（特权信息）"""
+
+        # 基座线速度（Critic特权信息）
+        base_lin_vel = ObsTerm(
+            func=mdp.base_lin_vel,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 基座角速度
+        base_ang_vel = ObsTerm(
+            func=mdp.base_ang_vel,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 投影重力向量
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 速度命令
+        velocity_commands = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "base_velocity"},
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 关节位置观测（轮子位置设为0）
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel_without_wheel,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True),
+                "wheel_asset_cfg": SceneEntityCfg("robot", joint_names=".*_foot_joint"),
+            },
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 关节速度观测
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 上一步动作
+        actions = ObsTerm(
+            func=mdp.last_action,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+            self.history_length = 5  # HIM: 5帧历史
+
+    @configclass
+    class HeightScanCfg(ObsGroup):
+        """高度扫描观测组 - 单独分组，无历史，仅 Critic 使用"""
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner"), "offset": 0.05},
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    policy: PolicyCfg = PolicyCfg()
+    critic: CriticCfg = CriticCfg()
+    height_scan_group: HeightScanCfg = HeightScanCfg()
 
 
 @configclass
@@ -121,6 +278,7 @@ class HeliosLegRewardsCfg(RewardsCfg):
 
 @configclass
 class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
+    """标准 PPO 配置 - 原有观测结构"""
     actions: HeliosLegActionsCfg = HeliosLegActionsCfg()
     rewards: HeliosLegRewardsCfg = HeliosLegRewardsCfg()
 
@@ -399,3 +557,37 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         # Z方向角速度命令范围 (rad/s) - 阶段1禁用
         self.commands.base_velocity.ranges.ang_vel_z = (-0.5, 0.5)
+
+
+@configclass
+class HeliosLegHistRoughEnvCfg(HeliosLegRoughEnvCfg):
+    """HIM 风格配置 - 带5帧历史观测
+
+    基于 HIM (Hybrid Internal Model) 论文：
+    - Policy 只用本体感知（不含 base_lin_vel）
+    - Critic 可访问特权信息（含 base_lin_vel）
+    - 5帧历史观测用于提取环境动态信息
+    """
+
+    # 使用 HIM 风格的观测配置
+    observations: HeliosLegHistObservationsCfg = HeliosLegHistObservationsCfg()
+
+    def __post_init__(self):
+        # 调用父类的 __post_init__（会设置 rewards 等）
+        super().__post_init__()
+
+        # ------------------------------Observations 观测配置------------------------------
+        # HIM 风格观测配置：覆盖父类的观测设置
+        # Policy 观测：设置关节名称
+        self.observations.policy.joint_pos.params["asset_cfg"].joint_names = self.joint_names
+        self.observations.policy.joint_pos.params["wheel_asset_cfg"].joint_names = self.wheel_joint_names
+        self.observations.policy.joint_vel.params["asset_cfg"].joint_names = self.joint_names
+
+        # Critic 观测：设置关节名称
+        self.observations.critic.joint_pos.params["asset_cfg"].joint_names = self.joint_names
+        self.observations.critic.joint_pos.params["wheel_asset_cfg"].joint_names = self.wheel_joint_names
+        self.observations.critic.joint_vel.params["asset_cfg"].joint_names = self.joint_names
+
+        # 自动移除权重为0的奖励项（优化性能）
+        if self.__class__.__name__ == "HeliosLegHistRoughEnvCfg":
+            self.disable_zero_weight_rewards()

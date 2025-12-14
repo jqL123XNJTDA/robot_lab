@@ -9,6 +9,7 @@ from . import agents
 # Register Gym environments.
 ##
 
+# 标准 PPO 环境
 gym.register(
     id="RobotLab-Isaac-Velocity-Flat-Helios-Leg-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
@@ -28,6 +29,30 @@ gym.register(
         "env_cfg_entry_point": f"{__name__}.rough_env_cfg:HeliosLegRoughEnvCfg",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:HeliosLegRoughPPORunnerCfg",
         "cusrl_cfg_entry_point": f"{agents.__name__}.cusrl_ppo_cfg:HeliosLegRoughTrainerCfg",
+    },
+)
+
+##
+# HIM 风格环境 - 带5帧历史观测
+##
+
+gym.register(
+    id="RobotLab-Isaac-Velocity-Flat-Helios-Leg-Hist-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.flat_env_cfg:HeliosLegHistFlatEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:HeliosLegHistFlatPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="RobotLab-Isaac-Velocity-Rough-Helios-Leg-Hist-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.rough_env_cfg:HeliosLegHistRoughEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:HeliosLegHistRoughPPORunnerCfg",
     },
 )
 
