@@ -48,9 +48,13 @@ def command_levels_lin_vel(
         # 初始化EMA追踪器，alpha=0.001对应约1000步有效窗口
         env._lin_vel_reward_ema = torch.zeros(1, device=env.device)
 
-    # 每步更新EMA（使用当前步的即时奖励）
-    if hasattr(env.reward_manager, '_term_sums') and reward_term_name in env.reward_manager._term_sums:
-        current_reward = torch.mean(env.reward_manager._term_sums[reward_term_name][env_ids])
+        # 获取 reward term 在 _step_reward 中的索引
+        env._lin_vel_term_idx = env.reward_manager._term_names.index(reward_term_name)
+
+    # 每步更新EMA（使用 _step_reward 获取当前步即时奖励）
+    if hasattr(env.reward_manager, '_step_reward'):
+        # _step_reward: [num_envs, num_terms]，存储的是 value/dt (原始奖励值)
+        current_reward = torch.mean(env.reward_manager._step_reward[env_ids, env._lin_vel_term_idx])
         alpha = 0.001
         env._lin_vel_reward_ema = alpha * current_reward + (1 - alpha) * env._lin_vel_reward_ema
 
@@ -99,9 +103,13 @@ def command_levels_ang_vel(
         # 初始化EMA追踪器
         env._ang_vel_reward_ema = torch.zeros(1, device=env.device)
 
-    # 每步更新EMA
-    if hasattr(env.reward_manager, '_term_sums') and reward_term_name in env.reward_manager._term_sums:
-        current_reward = torch.mean(env.reward_manager._term_sums[reward_term_name][env_ids])
+        # 获取 reward term 在 _step_reward 中的索引
+        env._ang_vel_term_idx = env.reward_manager._term_names.index(reward_term_name)
+
+    # 每步更新EMA（使用 _step_reward 获取当前步即时奖励）
+    if hasattr(env.reward_manager, '_step_reward'):
+        # _step_reward: [num_envs, num_terms]，存储的是 value/dt (原始奖励值)
+        current_reward = torch.mean(env.reward_manager._step_reward[env_ids, env._ang_vel_term_idx])
         alpha = 0.001
         env._ang_vel_reward_ema = alpha * current_reward + (1 - alpha) * env._ang_vel_reward_ema
 

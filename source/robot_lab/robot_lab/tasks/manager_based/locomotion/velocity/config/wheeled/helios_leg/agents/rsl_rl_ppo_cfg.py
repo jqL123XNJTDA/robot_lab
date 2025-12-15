@@ -40,7 +40,7 @@ class HeliosLegRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         clip_param=0.2,
         entropy_coef=0.01,
         num_learning_epochs=5,
-        num_mini_batches=4,
+        num_mini_batches=8,
         learning_rate=1.0e-3,
         schedule="adaptive",
         gamma=0.99,
@@ -103,7 +103,7 @@ class HeliosLegHistRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         clip_param=0.2,
         entropy_coef=0.01,
         num_learning_epochs=5,
-        num_mini_batches=4,
+        num_mini_batches=8,
         learning_rate=1.0e-3,
         schedule="adaptive",
         gamma=0.99,
@@ -176,5 +176,5 @@ class HeliosLegJumpNoAssistPPORunnerCfg(HeliosLegJumpPPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.max_iterations = 30000
+        self.max_iterations = 30000``
         self.experiment_name = "helios_leg_jump_no_assist"
