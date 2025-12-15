@@ -3,14 +3,18 @@
 
 import math
 
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
+from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
+from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import robot_lab.tasks.manager_based.locomotion.velocity.mdp as mdp
 from robot_lab.tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
     ActionsCfg,
     LocomotionVelocityRoughEnvCfg,
+    ObservationsCfg,
     RewardsCfg,
 )
 
@@ -312,3 +316,209 @@ class MyDogRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.terminations.illegal_contact = None # 初始训练可以先放宽碰撞检测
         self.curriculum.command_levels_lin_vel = None
         self.curriculum.command_levels_ang_vel = None
+
+
+# ==============================================================================
+# HIM (History-based Implicit Model) 配置
+# ==============================================================================
+
+
+@configclass
+class MyDogHistObservationsCfg(ObservationsCfg):
+    """HIM风格观测配置 - 带5帧历史信息
+
+    基于 HIM (Hybrid Internal Model) 论文：
+    - Policy 只用本体感知（不含 base_lin_vel）
+    - Critic 可访问特权信息（含 base_lin_vel）
+    - 5帧历史观测用于提取环境动态信息
+
+    MyDog 观测维度：57维/帧
+    - base_ang_vel: 3
+    - projected_gravity: 3
+    - velocity_commands: 3
+    - joint_pos: 16 (12腿 + 4轮，轮子位置=0)
+    - joint_vel: 16
+    - actions: 16
+    """
+
+    @configclass
+    class PolicyCfg(ObsGroup):
+        """Policy观测配置 - 带5帧历史，不含 base_lin_vel（只用本体感知）"""
+
+        # 基座角速度 (scale=0.25 参照 HIM)
+        base_ang_vel = ObsTerm(
+            func=mdp.base_ang_vel,
+            noise=Unoise(n_min=-0.2, n_max=0.2),
+            clip=(-100.0, 100.0),
+            scale=0.25,
+        )
+
+        # 投影重力向量
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 速度命令
+        velocity_commands = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "base_velocity"},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 关节位置观测（轮子位置设为0）- 16维
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel_without_wheel,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True),
+                "wheel_asset_cfg": SceneEntityCfg("robot", joint_names=".*_foot_joint"),
+            },
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 关节速度观测 (scale=0.05 参照 HIM) - 16维
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
+            noise=Unoise(n_min=-1.5, n_max=1.5),
+            clip=(-100.0, 100.0),
+            scale=0.05,
+        )
+
+        # 上一步动作 - 16维
+        actions = ObsTerm(
+            func=mdp.last_action,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+            self.history_length = 5  # HIM: 5帧历史
+
+    @configclass
+    class CriticCfg(ObsGroup):
+        """Critic观测配置 - 带5帧历史，含 base_lin_vel（特权信息）"""
+
+        # 基座线速度（Critic特权信息）
+        base_lin_vel = ObsTerm(
+            func=mdp.base_lin_vel,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 基座角速度
+        base_ang_vel = ObsTerm(
+            func=mdp.base_ang_vel,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 投影重力向量
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 速度命令
+        velocity_commands = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "base_velocity"},
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 关节位置观测（轮子位置设为0）- 16维
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel_without_wheel,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True),
+                "wheel_asset_cfg": SceneEntityCfg("robot", joint_names=".*_foot_joint"),
+            },
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 关节速度观测 - 16维
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        # 上一步动作 - 16维
+        actions = ObsTerm(
+            func=mdp.last_action,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+            self.history_length = 5  # HIM: 5帧历史
+
+    @configclass
+    class HeightScanCfg(ObsGroup):
+        """高度扫描观测组 - 单独分组，无历史，仅 Critic 使用"""
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner"), "offset": 0.05},
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    policy: PolicyCfg = PolicyCfg()
+    critic: CriticCfg = CriticCfg()
+    height_scan_group: HeightScanCfg = HeightScanCfg()
+
+
+@configclass
+class MyDogHistRoughEnvCfg(MyDogRoughEnvCfg):
+    """HIM 风格配置 - 带5帧历史观测
+
+    基于 HIM (Hybrid Internal Model) 论文：
+    - Policy 只用本体感知（不含 base_lin_vel）
+    - Critic 可访问特权信息（含 base_lin_vel）
+    - 5帧历史观测用于提取环境动态信息
+
+    观测维度：
+    - Policy: 57 × 5 = 285 维
+    - Critic: 60 × 5 + 187 (height_scan) 维
+    """
+
+    # 使用 HIM 风格的观测配置
+    observations: MyDogHistObservationsCfg = MyDogHistObservationsCfg()
+
+    def __post_init__(self):
+        # 调用父类的 __post_init__（会设置 rewards 等）
+        super().__post_init__()
+
+        # ------------------------------Observations 观测配置------------------------------
+        # HIM 风格观测配置：覆盖父类的观测设置
+        # Policy 观测：设置关节名称
+        self.observations.policy.joint_pos.params["asset_cfg"].joint_names = self.joint_names
+        self.observations.policy.joint_pos.params["wheel_asset_cfg"].joint_names = self.wheel_joint_names
+        self.observations.policy.joint_vel.params["asset_cfg"].joint_names = self.joint_names
+
+        # Critic 观测：设置关节名称
+        self.observations.critic.joint_pos.params["asset_cfg"].joint_names = self.joint_names
+        self.observations.critic.joint_pos.params["wheel_asset_cfg"].joint_names = self.wheel_joint_names
+        self.observations.critic.joint_vel.params["asset_cfg"].joint_names = self.joint_names
+
+        # 自动移除权重为0的奖励项（优化性能）
+        if self.__class__.__name__ == "MyDogHistRoughEnvCfg":
+            self.disable_zero_weight_rewards()

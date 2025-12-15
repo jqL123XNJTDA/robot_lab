@@ -6,7 +6,7 @@ from isaaclab.utils import configclass
 
 import robot_lab.tasks.manager_based.locomotion.velocity.mdp as mdp
 
-from .rough_env_cfg import MyDogRoughEnvCfg
+from .rough_env_cfg import MyDogRoughEnvCfg, MyDogHistRoughEnvCfg
 
 
 @configclass
@@ -131,4 +131,44 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
 
         # 删除权重为0的奖励
         if self.__class__.__name__ == "MyDogHandstandFlatEnvCfg":
+            self.disable_zero_weight_rewards()
+
+
+# ==============================================================================
+# HIM (History-based Implicit Model) Flat 环境配置
+# ==============================================================================
+
+
+@configclass
+class MyDogHistFlatEnvCfg(MyDogHistRoughEnvCfg):
+    """HIM 风格 Flat 环境配置 - 带5帧历史观测
+
+    基于 HIM (Hybrid Internal Model) 论文：
+    - Policy 只用本体感知（不含 base_lin_vel）
+    - Critic 可访问特权信息（含 base_lin_vel）
+    - 5帧历史观测用于提取环境动态信息
+    - Flat 环境禁用 height_scan_group
+    """
+
+    def __post_init__(self):
+        # post init of parent class
+        super().__post_init__()
+
+        # override rewards
+        self.rewards.base_height_l2.params["sensor_cfg"] = None
+
+        # 强制平面地形
+        self.scene.terrain.terrain_type = "plane"
+        self.scene.terrain.terrain_generator = None
+
+        # 禁用高度扫描器
+        self.scene.height_scanner = None
+        # 禁用 height_scan_group 观测组（HIM 风格：Critic 高度扫描单独分组）
+        self.observations.height_scan_group = None
+
+        # 禁用课程
+        self.curriculum.terrain_levels = None
+
+        # If the weight of rewards is 0, set rewards to None
+        if self.__class__.__name__ == "MyDogHistFlatEnvCfg":
             self.disable_zero_weight_rewards()
