@@ -120,7 +120,7 @@ class HIMEstimator(nn.Module):
         """
         parts = self.encoder(obs_history.detach())
         vel, z = parts[..., :3], parts[..., 3:]
-        z = F.normalize(z, dim=-1, p=2)
+        z = F.normalize(z, dim=-1, p=2.0)
         return vel.detach(), z.detach()
     
     def encode(self, obs_history: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -136,7 +136,7 @@ class HIMEstimator(nn.Module):
         """
         parts = self.encoder(obs_history.detach())
         vel, z = parts[..., :3], parts[..., 3:]
-        z = F.normalize(z, dim=-1, p=2)
+        z = F.normalize(z, dim=-1, p=2.0)
         return vel, z
     
     def update(

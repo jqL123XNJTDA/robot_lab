@@ -96,6 +96,7 @@ import robot_lab.tasks  # noqa: F401
 # Import HIM modules (local)
 from runners.him_on_policy_runner import HIMOnPolicyRunner
 from utils.export_him_policy import export_him_policy_as_jit, export_him_policy_as_onnx
+from utils.observation_reshaper import reshape_isaac_to_him, HELIOS_LEG_POLICY_DIMS, THUNDER_HIST_POLICY_DIMS
 
 # Import rl_utils for camera follow
 from pathlib import Path
@@ -242,7 +243,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     runner.load(resume_path)
 
     # obtain the trained policy for inference
-    policy = runner.get_inference_policy(device=env.unwrapped.device)
+    raw_policy = runner.get_inference_policy(device=env.unwrapped.device)
+
+    # 获取 reshaping 参数
+    history_len = runner.history_len
+    need_reshape = runner.need_reshape
+    policy_dims = runner.policy_dims
+
+    # 创建包装函数，在调用 policy 前先 reshape 观测
+    def policy(obs):
+        if need_reshape:
+            obs = reshape_isaac_to_him(obs, history_len=history_len, obs_dims=policy_dims)
+        return raw_policy(obs)
 
     # Extract the actor-critic network
     actor_critic = runner.alg.actor_critic
@@ -286,7 +298,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     dt = env.unwrapped.step_dt
 
     # reset environment
-    obs = env.get_observations()
+    obs_dict = env.get_observations()
+    # 提取 policy 观测（HIM 只需要 policy group）
+    if isinstance(obs_dict, TensorDict):
+        obs = obs_dict['policy']
+    else:
+        obs = obs_dict
     timestep = 0
 
     print("\n[INFO] Starting simulation...")
@@ -301,7 +318,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # agent stepping
             actions = policy(obs)
             # env stepping
-            obs, _, _, _ = env.step(actions)
+            obs_dict, _, _, _ = env.step(actions)
+            # 提取 policy 观测
+            if isinstance(obs_dict, TensorDict):
+                obs = obs_dict['policy']
+            else:
+                obs = obs_dict
 
         if args_cli.video:
             timestep += 1

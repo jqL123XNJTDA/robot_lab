@@ -545,10 +545,10 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 阶段2：冻结线速度，训练角速度（需手动切换）
 
         # # 线速度命令课程（根据 track_lin_vel_x_exp 奖励逐步增加速度范围）
-        # self.curriculum.command_levels_lin_vel.params["reward_term_name"] = "track_lin_vel_x_exp"
-        # self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.0, 1.0)  # 从0开始
+        self.curriculum.command_levels_lin_vel.params["reward_term_name"] = "track_lin_vel_x_exp"
+        self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.0, 1.0)  # 从0开始
         # 角速度命令课程 - 阶段1禁用
-        self.curriculum.command_levels_lin_vel = None 
+      
         self.curriculum.command_levels_ang_vel.params["reward_term_name"] = "track_ang_vel_z_exp"
         self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.0, 0.5)  # 阶段1禁用
 
