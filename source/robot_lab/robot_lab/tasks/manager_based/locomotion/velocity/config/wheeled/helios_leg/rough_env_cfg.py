@@ -554,7 +554,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # ------------------------------Commands 命令配置------------------------------
         # X方向线速度命令范围 (m/s)
-        self.commands.base_velocity.ranges.lin_vel_x = (0, 0)
+        self.commands.base_velocity.ranges.lin_vel_x = (-1, 1)
         # Y方向线速度命令范围 (m/s) - 禁用
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         # Z方向角速度命令范围 (rad/s) - 阶段1禁用
