@@ -22,3 +22,6 @@ from .utils import *  # noqa: F401, F403
 # 跳跃模块
 from .jump_commands import *  # noqa: F401, F403
 from .jump_rewards import *  # noqa: F401, F403
+
+# PIE (Parkour with Implicit-Explicit Learning Framework) 模块
+from .pie_observations import *  # noqa: F401, F403

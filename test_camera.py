@@ -71,7 +71,7 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 import robot_lab.tasks  # noqa: F401
 
 # ========== 深度图处理参数 ==========
-CLIP_RANGE = (0.3, 3.)
+CLIP_RANGE = (0.1, 3.0)
 RESIZE = (87, 58)
 resize_transform = torchvision.transforms.Resize(
     (RESIZE[1], RESIZE[0]),
@@ -127,26 +127,32 @@ def visualize_depth(env, count: int, output_dir: str):
             print("[DEBUG] No valid depth values!")
 
     # 处理 nan/inf 值
-    depth_image = np.nan_to_num(depth_image, nan=3.0, posinf=3.0, neginf=0.0)
-
-    # 归一化到 0-1 范围用于显示
-    depth_normalized = (depth_image - 0.0) / 3.0
-    depth_normalized = depth_normalized.clip(0, 1)
+    depth_image = np.nan_to_num(depth_image, nan=1.5, posinf=1.5, neginf=0.0)
 
     # 尝试显示图像
     try:
-        cv2.imshow('depth_camera', depth_normalized)
+        # 原始深度图显示（0-1.5m 映射到 colormap）
+        depth_colormap = cv2.applyColorMap(
+            (depth_image / 3 * 255).clip(0, 255).astype(np.uint8),
+            cv2.COLORMAP_JET
+        )
+        cv2.imshow('depth_camera', depth_colormap)
+
+        # 处理后的深度图（为神经网络）
         process_image = _process_depth_image(depth_image[:, :, None])
         cv2.imshow('process_image', process_image + 0.5)  # 偏移0.5使可视化更好
         cv2.waitKey(1)
     except cv2.error:
         # OpenCV 没有 GUI 支持，保存图像到文件
         if count % 100 == 0:
-            cv2.imwrite(os.path.join(output_dir, f'depth_{count}.png'),
-                       (depth_normalized * 255).astype('uint8'))
+            depth_colormap = cv2.applyColorMap(
+                (depth_image / 1.5 * 255).clip(0, 255).astype(np.uint8),
+                cv2.COLORMAP_JET
+            )
+            cv2.imwrite(os.path.join(output_dir, f'depth_{count}.png'), depth_colormap)
             process_image = _process_depth_image(depth_image[:, :, None])
             cv2.imwrite(os.path.join(output_dir, f'processed_{count}.png'),
-                       ((process_image + 0.5) * 255).astype('uint8'))
+                       ((process_image + 0.5) * 255).astype(np.uint8))
             print(f"[INFO]: Saved depth images at frame {count}")
 
 
@@ -165,8 +171,8 @@ def add_depth_camera_to_env_cfg(env_cfg):
         debug_vis=True,
         offset=RayCasterCameraCfg.OffsetCfg(
             pos=(0.6, 0.0, 0.1),
-            rot=(0.5, -0.5, 0.5, 0.5),  # 朝向 +X 轴，水平正前方
-            convention="world"
+            rot = (0.9239, 0.0, 0.3827, 0.0),
+            convention = "world",
         ),
         pattern_cfg=patterns.PinholeCameraPatternCfg(
             focal_length=24.0,
@@ -174,7 +180,7 @@ def add_depth_camera_to_env_cfg(env_cfg):
             width=106,
             height=60,
         ),
-        max_distance=3.0,
+        max_distance=3,
         mesh_prim_paths=[terrain_prim_path],
     )
 

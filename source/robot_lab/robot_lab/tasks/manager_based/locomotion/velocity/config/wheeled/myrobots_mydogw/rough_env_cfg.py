@@ -189,12 +189,17 @@ class MyDogRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
         
         # 观察值缩放
-        self.observations.policy.base_lin_vel.scale = 2.0
+        # 条件检查: PIE配置不使用base_lin_vel观测
+        if hasattr(self.observations.policy, 'base_lin_vel') and self.observations.policy.base_lin_vel is not None:
+            self.observations.policy.base_lin_vel.scale = 2.0
         self.observations.policy.base_ang_vel.scale = 0.25
         self.observations.policy.joint_pos.scale = 1.0
         self.observations.policy.joint_vel.scale = 0.05
-        self.observations.policy.base_lin_vel = None # 这里的 None 意味着使用默认配置或被后续逻辑覆盖
-        self.observations.policy.height_scan = None
+        # 禁用base_lin_vel和height_scan (轮式机器人配置)
+        if hasattr(self.observations.policy, 'base_lin_vel'):
+            self.observations.policy.base_lin_vel = None
+        if hasattr(self.observations.policy, 'height_scan'):
+            self.observations.policy.height_scan = None
         
         # 确保观察包含所有关节
         self.observations.policy.joint_pos.params["asset_cfg"].joint_names = self.joint_names
