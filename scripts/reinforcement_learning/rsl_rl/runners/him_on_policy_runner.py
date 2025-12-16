@@ -269,12 +269,13 @@ class HIMOnPolicyRunner:
             
             # Save checkpoint
             if it % self.save_interval == 0:
+                self.current_learning_iteration = it  # 更新当前迭代号
                 self.save(os.path.join(self.log_dir, f'model_{it}.pt'))
             
             ep_infos.clear()
-        
+
         # Save final model
-        self.current_learning_iteration += num_learning_iterations
+        self.current_learning_iteration = tot_iter  # 设置为最终迭代号
         self.save(os.path.join(self.log_dir, f'model_{self.current_learning_iteration}.pt'))
     
     def _extract_observations(self, obs_dict):

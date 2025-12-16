@@ -126,9 +126,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             omega_z_sensitivity=env_cfg.commands.base_velocity.ranges.ang_vel_z[1],
         )
         controller = Se2Keyboard(config)
+        # 键盘控制：替换 velocity_commands 观测，保持 clip/scale 参数与训练一致
         env_cfg.observations.policy.velocity_commands = ObsTerm(
-            func=lambda env: torch.tensor(controller.advance(), dtype=torch.float32).unsqueeze(0).to(env.device),
+            func=lambda env, ctrl=controller: torch.tensor(ctrl.advance(), dtype=torch.float32).unsqueeze(0).to(env.device),
+            clip=(-100.0, 100.0),
+            scale=1.0,
         )
+        print("[INFO] 键盘控制已启用: W/S=前进/后退, A/D=左转/右转, Q/E=左移/右移")
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
@@ -212,160 +216,20 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     obs = env.get_observations()
     timestep = 0
 
-    # ========== 后腿关节限位监控 ==========
+    # ========== 后腿关节限位监控 (已禁用) ==========
     hind_joint_monitor = None
-    try:
-        robot_asset = env.unwrapped.scene["robot"]
-        hind_joint_names = ["RR_thigh_joint", "RR_calf_joint", "RL_thigh_joint", "RL_calf_joint"]
-        hind_joint_ids_tensor = robot_asset.find_joints(hind_joint_names, preserve_order=True)[0]
-        # 保持为 tensor 格式，确保在正确的设备上
-        if not isinstance(hind_joint_ids_tensor, torch.Tensor):
-            hind_joint_ids_tensor = torch.tensor(list(hind_joint_ids_tensor), dtype=torch.long)
-        hind_joint_ids = hind_joint_ids_tensor.to(env.unwrapped.device)
-
-        if robot_asset.data.soft_joint_pos_limits is None:
-            raise RuntimeError("soft_joint_pos_limits 不可用，无法监控关节限位")
-        num_envs = getattr(env.unwrapped, "num_envs", None)
-        if num_envs is None:
-            num_envs = getattr(env.unwrapped.scene, "num_envs", 1)
-        hind_joint_monitor = {
-            "asset": robot_asset,
-            "joint_ids": hind_joint_ids,  # 现在是 tensor
-            "joint_names": hind_joint_names,
-            "prev_violation": torch.zeros((num_envs, len(hind_joint_names)), dtype=torch.bool, device=env.unwrapped.device),
-            "tolerance": 0.05,  # 增加裕度到约2.86°，避免误报
-        }
-        print(f"[INFO] 后腿关节限位监控启用: {hind_joint_names}")
-        print(f"[INFO] 监控设备: {env.unwrapped.device}, 环境数: {num_envs}")
-
-        # 调试：打印所有环境的关节限位值统计
-        if robot_asset.data.soft_joint_pos_limits is not None:
-            all_limits = robot_asset.data.soft_joint_pos_limits[:, hind_joint_ids, :].detach().cpu()
-            print(f"[DEBUG] 所有环境后腿关节软限位统计:")
-            for i, name in enumerate(hind_joint_names):
-                lower_vals = all_limits[:, i, 0]
-                upper_vals = all_limits[:, i, 1]
-                print(f"  {name}:")
-                print(f"    下限: min={lower_vals.min():.3f}, max={lower_vals.max():.3f}, mean={lower_vals.mean():.3f}")
-                print(f"    上限: min={upper_vals.min():.3f}, max={upper_vals.max():.3f}, mean={upper_vals.mean():.3f}")
-                # 检查是否有异常值
-                if lower_vals.std() > 0.1 or upper_vals.std() > 0.1:
-                    abnormal_envs_lower = torch.where(torch.abs(lower_vals - lower_vals.mean()) > 0.5)[0]
-                    abnormal_envs_upper = torch.where(torch.abs(upper_vals - upper_vals.mean()) > 0.5)[0]
-                    if len(abnormal_envs_lower) > 0:
-                        print(f"    WARNING: 下限异常的环境: {abnormal_envs_lower.tolist()}")
-                    if len(abnormal_envs_upper) > 0:
-                        print(f"    WARNING: 上限异常的环境: {abnormal_envs_upper.tolist()}")
-    except Exception as exc:
-        print(f"[WARN] 后腿关节限位监控初始化失败: {exc}")
     # ====================================
 
-    # ========== 后腿Calf高度监控 ==========
+    # ========== 后腿Calf高度监控 (已禁用) ==========
     calf_height_monitor = None
-    try:
-        robot_asset = env.unwrapped.scene["robot"]
-        # 后腿小腿刚体名称
-        hind_calf_names = ["RR_calf", "RL_calf"]
-        hind_calf_ids_list = []
-        for name in hind_calf_names:
-            body_id = robot_asset.find_bodies(name)[0]
-            if isinstance(body_id, torch.Tensor):
-                hind_calf_ids_list.append(body_id.item())
-            else:
-                hind_calf_ids_list.append(int(body_id[0]))
-
-        hind_calf_ids = torch.tensor(hind_calf_ids_list, dtype=torch.long, device=env.unwrapped.device)
-
-        calf_height_monitor = {
-            "asset": robot_asset,
-            "body_ids": hind_calf_ids,
-            "body_names": hind_calf_names,
-            "print_interval": 50,  # 每50步打印一次
-            "step_counter": 0,
-        }
-        print(f"[INFO] 后腿Calf高度监控启用: {hind_calf_names}")
-    except Exception as exc:
-        print(f"[WARN] 后腿Calf高度监控初始化失败: {exc}")
     # ====================================
 
-    # ========== 接触力监控 (base_link, calf_link) ==========
+    # ========== 接触力监控 (已禁用) ==========
     contact_force_monitor = None
-    try:
-        # 获取接触力传感器
-        contact_sensor = env.unwrapped.scene.sensors["contact_forces"]
-        
-        # 【关键修复】使用传感器自己的刚体名称列表来查找索引
-        # sensor.body_names 是传感器实际跟踪的刚体列表
-        sensor_body_names = contact_sensor.body_names  # 传感器跟踪的刚体名称列表
-        
-        # 要监控的刚体模式 (base, calf, foot)
-        monitor_patterns = ["base", "calf", "foot"]
-        monitor_body_names = []
-        monitor_body_ids = []
-        
-        # 在传感器的刚体列表中查找匹配的刚体
-        for sensor_idx, sensor_body_name in enumerate(sensor_body_names):
-            for pattern in monitor_patterns:
-                if pattern in sensor_body_name.lower():
-                    monitor_body_ids.append(sensor_idx)  # 使用传感器的索引！
-                    monitor_body_names.append(sensor_body_name)
-                    break  # 一个刚体只匹配一次
-
-        if len(monitor_body_ids) > 0:
-            contact_force_monitor = {
-                "sensor": contact_sensor,
-                "body_ids": torch.tensor(monitor_body_ids, dtype=torch.long, device=env.unwrapped.device),
-                "body_names": monitor_body_names,
-                "threshold": 10.0,  # base/calf 检测超过10N的接触
-                "foot_threshold": 150.0,  # foot 检测超过150N的接触
-                "print_interval": 50,  # 每50步打印一次统计
-                "step_counter": 0,
-            }
-            print(f"[INFO] 接触力监控启用: {monitor_body_names}")
-            print(f"[INFO] 传感器跟踪的刚体数量: {len(sensor_body_names)}")
-            print(f"[INFO] 监控的刚体索引: {monitor_body_ids}")
-            print(f"[INFO] 接触力阈值: {contact_force_monitor['threshold']} N")
-        else:
-            print(f"[WARN] 在传感器刚体列表中未找到 base/calf，接触力监控未启用")
-            print(f"[DEBUG] 传感器跟踪的刚体: {sensor_body_names}")
-    except Exception as exc:
-        print(f"[WARN] 接触力监控初始化失败: {exc}")
-        import traceback
-        traceback.print_exc()
     # ====================================
 
-    # ========== Base Link 高度监控 ==========
+    # ========== Base Link 高度监控 (已禁用) ==========
     base_height_monitor = None
-    try:
-        robot_asset = env.unwrapped.scene["robot"]
-        all_body_names = robot_asset.body_names
-        
-        # 查找 base_link
-        base_link_name = None
-        base_link_id = None
-        for name in all_body_names:
-            if "base" in name.lower():
-                base_link_name = name
-                body_id = robot_asset.find_bodies(name)[0]
-                if isinstance(body_id, torch.Tensor):
-                    base_link_id = body_id.item()
-                else:
-                    base_link_id = int(body_id[0])
-                break
-        
-        if base_link_name is not None:
-            base_height_monitor = {
-                "asset": robot_asset,
-                "body_id": base_link_id,
-                "body_name": base_link_name,
-                "print_interval": 50,  # 每50步打印一次
-                "step_counter": 0,
-            }
-            print(f"[INFO] Base Link 高度监控启用: {base_link_name}")
-        else:
-            print("[WARN] 未找到 base_link，高度监控未启用")
-    except Exception as exc:
-        print(f"[WARN] Base Link 高度监控初始化失败: {exc}")
     # ====================================
 
     # simulate environment
@@ -378,6 +242,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # actions = torch.zeros_like(actions)
             # env stepping
             obs, _, _, _ = env.step(actions)
+
+            # ========== 键盘调试 ==========
+            if args_cli.keyboard and timestep % 50 == 0:
+                # 直接调用 controller.advance() 检查键盘输入
+                cmd = controller.advance()
+                print(f"[DEBUG][Step {timestep}] Keyboard cmd: vx={cmd[0]:.2f}, vy={cmd[1]:.2f}, wz={cmd[2]:.2f}")
+            # ==============================
 
             # ========== 后腿关节限位检测 ==========
             if hind_joint_monitor is not None:

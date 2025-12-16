@@ -22,17 +22,13 @@ def command_levels_lin_vel(
     env_ids: Sequence[int],
     reward_term_name: str,
     range_multiplier: Sequence[float] = (0.1, 1.0),
-) -> None:
-    """command_levels_lin_vel - 使用指数移动平均(EMA)跟踪奖励
-
-    解决episode边界时序问题：当episode长度(~904步)与检查间隔(1000步)不对齐时，
-    原逻辑使用episode_sums会因刚reset而得到极低值。
-    EMA方案独立于episode边界，每步更新滑动平均。
+) -> torch.Tensor:
+    """
+    修正版：基于 '平均每步得分 (Average Step Reward)' 的课程升级。
     """
     base_velocity_ranges = env.command_manager.get_term("base_velocity").cfg.ranges
-    reward_term_cfg = env.reward_manager.get_term_cfg(reward_term_name)
 
-    # 初始化 (仅在第一步)
+    # --- 1. 初始化 ---
     if env.common_step_counter == 0:
         env._original_vel_x = torch.tensor(base_velocity_ranges.lin_vel_x, device=env.device)
         env._original_vel_y = torch.tensor(base_velocity_ranges.lin_vel_y, device=env.device)
@@ -41,39 +37,50 @@ def command_levels_lin_vel(
         env._initial_vel_y = env._original_vel_y * range_multiplier[0]
         env._final_vel_y = env._original_vel_y * range_multiplier[1]
 
-        # Initialize command ranges to initial values
         base_velocity_ranges.lin_vel_x = env._initial_vel_x.tolist()
         base_velocity_ranges.lin_vel_y = env._initial_vel_y.tolist()
 
-        # 初始化EMA追踪器，alpha=0.001对应约1000步有效窗口
-        env._lin_vel_reward_ema = torch.zeros(1, device=env.device)
-
-        # 获取 reward term 在 _step_reward 中的索引
-        env._lin_vel_term_idx = env.reward_manager._term_names.index(reward_term_name)
-
-    # 每步更新EMA（使用 _step_reward 获取当前步即时奖励）
-    if hasattr(env.reward_manager, '_step_reward'):
-        # _step_reward: [num_envs, num_terms]，存储的是 value/dt (原始奖励值)
-        current_reward = torch.mean(env.reward_manager._step_reward[env_ids, env._lin_vel_term_idx])
-        alpha = 0.001
-        env._lin_vel_reward_ema = alpha * current_reward + (1 - alpha) * env._lin_vel_reward_ema
-
-    # 每 max_episode_length 步检查一次课程升级
+    # --- 2. 检查逻辑 ---
     if env.common_step_counter % env.max_episode_length == 0 and env.common_step_counter > 0:
-        delta_command = torch.tensor([-0.1, 0.1], device=env.device)
 
-        # 使用EMA判断是否升级，阈值为最大奖励的80%
-        if env._lin_vel_reward_ema.item() > 0.8 * reward_term_cfg.weight:
-            new_vel_x = torch.tensor(base_velocity_ranges.lin_vel_x, device=env.device) + delta_command
-            new_vel_y = torch.tensor(base_velocity_ranges.lin_vel_y, device=env.device) + delta_command
+        # A. 获取分子：当前 Episode 累积奖励
+        current_sums = env.reward_manager._episode_sums[reward_term_name][env_ids]
 
-            # Clamp to ensure we don't exceed final ranges
-            new_vel_x = torch.clamp(new_vel_x, min=env._final_vel_x[0], max=env._final_vel_x[1])
-            new_vel_y = torch.clamp(new_vel_y, min=env._final_vel_y[0], max=env._final_vel_y[1])
+        # B. 获取分母：当前 Episode 实际存活步数 (关键修改：不要乘 dt)
+        current_steps = env.episode_length_buf[env_ids]  # [Steps]
 
-            # Update ranges
-            base_velocity_ranges.lin_vel_x = new_vel_x.tolist()
-            base_velocity_ranges.lin_vel_y = new_vel_y.tolist()
+        # C. 过滤噪音：只统计活了超过 10 步的机器人
+        valid_mask = current_steps > 10
+
+        if valid_mask.sum() > 0:
+            # D. 计算：平均每步得分 (Reward per Step)
+            # 修正：直接除以步数，单位变回 "Reward Value"
+            avg_reward_per_step = current_sums[valid_mask] / current_steps[valid_mask]
+
+            # E. 计算整个群体的平均表现
+            mean_performance = torch.mean(avg_reward_per_step)
+
+            # F. 获取满分标准 (Weight = 单步理想奖励)
+            reward_term_cfg = env.reward_manager.get_term_cfg(reward_term_name)
+            target_per_step = reward_term_cfg.weight
+
+            # G. 判定：得分率 > 80%
+            # 例如：5.5 (表现) > 0.8 * 6.0 (4.8)
+            if mean_performance > 0.8 * target_per_step:
+
+                # --- 3. 难度提升 ---
+                delta_command = torch.tensor([-0.1, 0.1], device=env.device)
+                new_vel_x = torch.tensor(base_velocity_ranges.lin_vel_x, device=env.device) + delta_command
+                new_vel_y = torch.tensor(base_velocity_ranges.lin_vel_y, device=env.device) + delta_command
+
+                new_vel_x = torch.clamp(new_vel_x, min=env._final_vel_x[0], max=env._final_vel_x[1])
+                new_vel_y = torch.clamp(new_vel_y, min=env._final_vel_y[0], max=env._final_vel_y[1])
+
+                base_velocity_ranges.lin_vel_x = new_vel_x.tolist()
+                base_velocity_ranges.lin_vel_y = new_vel_y.tolist()
+
+                print(f"[Curriculum] Lin Vel Level Up! Range: {base_velocity_ranges.lin_vel_x}, "
+                      f"Perf: {mean_performance:.3f}/{target_per_step:.3f}")
 
     return torch.tensor(base_velocity_ranges.lin_vel_x[1], device=env.device)
 
@@ -83,48 +90,56 @@ def command_levels_ang_vel(
     env_ids: Sequence[int],
     reward_term_name: str,
     range_multiplier: Sequence[float] = (0.1, 1.0),
-) -> None:
-    """command_levels_ang_vel - 使用指数移动平均(EMA)跟踪奖励
-
-    解决episode边界时序问题，与command_levels_lin_vel同理。
+) -> torch.Tensor:
+    """
+    修正版：基于 '平均每步得分 (Average Step Reward)' 的课程升级。
     """
     base_velocity_ranges = env.command_manager.get_term("base_velocity").cfg.ranges
-    reward_term_cfg = env.reward_manager.get_term_cfg(reward_term_name)
 
-    # 初始化 (仅在第一步)
+    # --- 1. 初始化 (保持不变) ---
     if env.common_step_counter == 0:
         env._original_ang_vel_z = torch.tensor(base_velocity_ranges.ang_vel_z, device=env.device)
         env._initial_ang_vel_z = env._original_ang_vel_z * range_multiplier[0]
         env._final_ang_vel_z = env._original_ang_vel_z * range_multiplier[1]
 
-        # Initialize command ranges to initial values
         base_velocity_ranges.ang_vel_z = env._initial_ang_vel_z.tolist()
 
-        # 初始化EMA追踪器
-        env._ang_vel_reward_ema = torch.zeros(1, device=env.device)
-
-        # 获取 reward term 在 _step_reward 中的索引
-        env._ang_vel_term_idx = env.reward_manager._term_names.index(reward_term_name)
-
-    # 每步更新EMA（使用 _step_reward 获取当前步即时奖励）
-    if hasattr(env.reward_manager, '_step_reward'):
-        # _step_reward: [num_envs, num_terms]，存储的是 value/dt (原始奖励值)
-        current_reward = torch.mean(env.reward_manager._step_reward[env_ids, env._ang_vel_term_idx])
-        alpha = 0.001
-        env._ang_vel_reward_ema = alpha * current_reward + (1 - alpha) * env._ang_vel_reward_ema
-
-    # 每 max_episode_length 步检查一次课程升级
+    # --- 2. 检查逻辑 ---
     if env.common_step_counter % env.max_episode_length == 0 and env.common_step_counter > 0:
-        delta_command = torch.tensor([-0.1, 0.1], device=env.device)
 
-        # 使用EMA判断是否升级
-        if env._ang_vel_reward_ema.item() > 0.8 * reward_term_cfg.weight:
-            new_ang_vel_z = torch.tensor(base_velocity_ranges.ang_vel_z, device=env.device) + delta_command
+        # A. 分子：累积奖励
+        current_sums = env.reward_manager._episode_sums[reward_term_name][env_ids]
 
-            # Clamp to ensure we don't exceed final ranges
-            new_ang_vel_z = torch.clamp(new_ang_vel_z, min=env._final_ang_vel_z[0], max=env._final_ang_vel_z[1])
+        # B. 分母：当前存活步数 (❌ 不要乘 dt)
+        current_steps = env.episode_length_buf[env_ids]
 
-            # Update ranges
-            base_velocity_ranges.ang_vel_z = new_ang_vel_z.tolist()
+        # C. 过滤噪音
+        valid_mask = current_steps > 10
+
+        if valid_mask.sum() > 0:
+            # D. 计算：平均每步得分
+            # 修正：直接除以步数，单位回归到 [Reward Value]
+            avg_reward_per_step = current_sums[valid_mask] / current_steps[valid_mask]
+
+            # E. 平均表现
+            mean_performance = torch.mean(avg_reward_per_step)
+
+            # F. 满分标准 (Weight = 单步理想奖励)
+            reward_term_cfg = env.reward_manager.get_term_cfg(reward_term_name)
+            target_per_step = reward_term_cfg.weight
+
+            # G. 判定
+            if mean_performance > 0.8 * target_per_step:
+
+                # --- 3. 难度提升 ---
+                delta_command = torch.tensor([-0.1, 0.1], device=env.device)
+                new_ang_vel_z = torch.tensor(base_velocity_ranges.ang_vel_z, device=env.device) + delta_command
+
+                new_ang_vel_z = torch.clamp(new_ang_vel_z, min=env._final_ang_vel_z[0], max=env._final_ang_vel_z[1])
+
+                base_velocity_ranges.ang_vel_z = new_ang_vel_z.tolist()
+
+                print(f"[Curriculum] Ang Vel Level Up! Range: {base_velocity_ranges.ang_vel_z}, "
+                      f"Perf: {mean_performance:.3f}/{target_per_step:.3f}")
 
     return torch.tensor(base_velocity_ranges.ang_vel_z[1], device=env.device)

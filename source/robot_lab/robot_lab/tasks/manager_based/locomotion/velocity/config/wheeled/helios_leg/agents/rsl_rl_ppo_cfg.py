@@ -176,5 +176,5 @@ class HeliosLegJumpNoAssistPPORunnerCfg(HeliosLegJumpPPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.max_iterations = 30000``
+        self.max_iterations = 30000
         self.experiment_name = "helios_leg_jump_no_assist"
