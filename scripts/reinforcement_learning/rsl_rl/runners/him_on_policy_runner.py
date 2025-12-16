@@ -269,7 +269,7 @@ class HIMOnPolicyRunner:
             
             # Save checkpoint
             if it % self.save_interval == 0:
-                self.current_learning_iteration = it  # 更新当前迭代号
+                self.current_learning_iteration = it + 1  # 下一个要训练的迭代号
                 self.save(os.path.join(self.log_dir, f'model_{it}.pt'))
             
             ep_infos.clear()
