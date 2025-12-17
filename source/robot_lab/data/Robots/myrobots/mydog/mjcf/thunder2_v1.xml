@@ -48,7 +48,8 @@
   <worldbody>
     <light directional="true" diffuse=".4 .4 .4" specular="0.1 0.1 0.1" pos="0 0 5.0" dir="0 0 -1" castshadow="false"/>
     <light directional="true" diffuse=".6 .6 .6" specular="0.2 0.2 0.2" pos="0 0 4" dir="0 0 -1"/>
-    <geom name="ground" type="plane" size="0 0 1" pos="0.001 0 0" quat="1 0 0 0" material="matplane" condim="1" conaffinity='15'/>
+    <!-- 地面: condim=4 启用摩擦力，friction="1.0 0.5 0.5" 设置切向/扭转/滚动摩擦 -->
+    <geom name="ground" type="plane" size="0 0 1" pos="0.001 0 0" quat="1 0 0 0" material="matplane" condim="4" conaffinity='15' friction="1.0 0.5 0.5"/>
     <body name="base_link" pos='0 0 0.55'>
       <site name='imu' size='0.01' pos='0.0 0 0.0' quat='1 0 0 0'/>
       <inertial pos="-0.00018 0.00759 0.06615" mass="15.05964" fullinertia="0.16838 0.45784 0.44489 0.00036 0.00047 -0.00598"/>

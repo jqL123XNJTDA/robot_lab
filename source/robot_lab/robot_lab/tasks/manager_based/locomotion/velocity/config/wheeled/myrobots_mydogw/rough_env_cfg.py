@@ -318,9 +318,18 @@ class MyDogRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             self.disable_zero_weight_rewards()
 
         # ------------------------------Terminations------------------------------
-        self.terminations.illegal_contact = None # 初始训练可以先放宽碰撞检测
-        self.curriculum.command_levels_lin_vel = None
-        self.curriculum.command_levels_ang_vel = None
+        self.terminations.illegal_contact = None
+        
+        
+        # 课程学习：从20%原始速度开始，逐步提升到100%原始速度
+        self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.2, 1.0)
+        self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.2, 1.0)
+
+
+        #------------------------------Commands------------------------------
+        self.commands.base_velocity.ranges.lin_vel_x = (-2.0, 2.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-2.0, 2.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.5, 1.5)
 
 
 # ==============================================================================

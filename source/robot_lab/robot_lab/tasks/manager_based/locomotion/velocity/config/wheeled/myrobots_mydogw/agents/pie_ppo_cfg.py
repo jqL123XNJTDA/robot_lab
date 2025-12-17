@@ -98,7 +98,7 @@ class PIEAlgorithmCfg:
     clip_param: float = 0.2
     entropy_coef: float = 0.01
     num_learning_epochs: int = 5
-    num_mini_batches: int = 4
+    num_mini_batches: int = 8
     learning_rate: float = 1e-3
     schedule: str = "adaptive"
     gamma: float = 0.99
