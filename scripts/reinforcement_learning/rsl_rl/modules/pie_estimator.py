@@ -64,6 +64,7 @@ class PIEEstimatorConfig:
 
     # 优化器配置
     learning_rate: float = 1e-3
+    max_grad_norm: float = 1.0      # 梯度裁剪阈值
 
 
 class PIEEstimator(nn.Module):
@@ -295,6 +296,10 @@ class PIEEstimator(nn.Module):
         )
 
         total_loss.backward()
+
+        # 梯度裁剪防止梯度爆炸
+        nn.utils.clip_grad_norm_(self.parameters(), self.cfg.max_grad_norm)
+
         self.optimizer.step()
 
         return loss_dict
