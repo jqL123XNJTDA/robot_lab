@@ -47,24 +47,13 @@ def _init_lin_vel_curriculum(
     # 判断是否是 Resume（通过检查当前范围是否在合理区间内）
     is_resume = env.common_step_counter > 0
 
+    # Resume 或新训练：都从初始范围开始（课程进度不持久化）
     if is_resume:
-        # Resume 模式：保持当前范围（可能已经升级过）
-        # 但需要确保当前范围在 [initial, final] 区间内
-        current_vel_x = config_vel_x  # Resume 时配置值就是当前值
-        current_vel_y = config_vel_y
-
-        # 如果当前值超出初始范围，说明之前已经升级过
-        # 如果当前值等于原始配置，说明是新训练或配置被重置
-        # 这里我们选择：Resume 时从初始范围重新开始（因为无法恢复之前的进度）
-        # 如果需要保留进度，需要在 checkpoint 中保存课程状态
         print(f"[Curriculum] Resume detected (step={env.common_step_counter}). "
               f"Resetting lin_vel curriculum to initial range.")
-        base_velocity_ranges.lin_vel_x = env._initial_vel_x.tolist()
-        base_velocity_ranges.lin_vel_y = env._initial_vel_y.tolist()
-    else:
-        # 新训练：设置初始范围
-        base_velocity_ranges.lin_vel_x = env._initial_vel_x.tolist()
-        base_velocity_ranges.lin_vel_y = env._initial_vel_y.tolist()
+
+    base_velocity_ranges.lin_vel_x = env._initial_vel_x.tolist()
+    base_velocity_ranges.lin_vel_y = env._initial_vel_y.tolist()
 
     # 初始化性能历史记录（滑动窗口）
     env._lin_vel_perf_history = []
