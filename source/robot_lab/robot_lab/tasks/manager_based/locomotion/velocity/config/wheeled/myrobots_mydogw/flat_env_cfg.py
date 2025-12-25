@@ -113,11 +113,16 @@ class MyDogHandstandFlatEnvCfg(MyDogFlatEnvCfg):
         # 倒立专用速度惩罚 - 保持静止
         self.rewards.handstand_lin_vel_xy_l2.weight = -1.5   # 惩罚 YZ 方向移动
         self.rewards.handstand_ang_vel_xyz_l2.weight = -1.5  # 惩罚旋转
-        
+
         self.rewards.upward.weight = 0
         # ------------------------------Events------------------------------
         # 关闭复位随机化，保持每次 episode 初始姿态一致
         #self.events.randomize_reset_base = None
+
+        # ------------------------------Curriculum------------------------------
+        # 禁用速度命令课程学习（倒立任务速度为0，不需要课程）
+        self.curriculum.command_levels_lin_vel = None
+        self.curriculum.command_levels_ang_vel = None
 
         # ------------------------------Terminations------------------------------
         # 注意：bad_orientation 会在 |gravity_z| > threshold 时终止
@@ -171,4 +176,113 @@ class MyDogHistFlatEnvCfg(MyDogHistRoughEnvCfg):
 
         # If the weight of rewards is 0, set rewards to None
         if self.__class__.__name__ == "MyDogHistFlatEnvCfg":
+            self.disable_zero_weight_rewards()
+
+
+@configclass
+class MyDogHandstandHistFlatEnvCfg(MyDogHistFlatEnvCfg):
+    """HIM 风格倒立训练配置 - 带5帧历史观测
+
+    基于 MyDogHistFlatEnvCfg（HIM 观测）+ MyDogHandstandFlatEnvCfg（倒立奖励）
+
+    观测维度：
+    - Policy: 57 × 5 = 285 维（5帧历史，无 base_lin_vel）
+    - Critic: 60 × 5 维（5帧历史，含 base_lin_vel）
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # 仅在原地训练，关闭速度/朝向指令
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+        self.commands.base_velocity.heading_command = False
+
+        # 移除与行走相关的奖励，避免与倒立目标冲突
+        self.rewards.track_lin_vel_xy_exp.weight = 0
+        self.rewards.track_ang_vel_z_exp.weight = 0
+        self.rewards.feet_contact_without_cmd.weight = 0
+        self.rewards.wheel_vel_penalty.weight = 0
+        self.rewards.stand_still.weight = 0
+        self.rewards.joint_pos_penalty.weight = 0
+        self.rewards.upward.weight = 0
+        self.rewards.contact_forces.weight = 0
+
+        # 放宽 root 相关惩罚，重点关注倒立姿态
+        self.rewards.lin_vel_z_l2.weight = 0
+        self.rewards.ang_vel_xy_l2.weight = 0
+        self.rewards.base_height_l2.weight = 0
+
+
+        # ------------------------------Handstand Rewards------------------------------
+        handstand_type = "back"  # 使用前腿支撑倒立
+        if handstand_type == "front":
+            air_foot_pattern = "F.*_foot"      # 前轮悬空检测 + 脚高度检测
+            knee_patterns = ["F.*(hip|thigh|calf)"]
+            target_gravity = [-1.0, 0.0, 0.0]
+        else:
+            air_foot_pattern = "R.*_foot"      # 后轮悬空检测 + 脚高度检测
+            knee_patterns = ["R.*(hip|thigh|calf)"]
+            target_gravity = [1.0, 0.0, 0.0]
+
+        self.rewards.handstand_orientation_l2.weight = -1.0
+        self.rewards.handstand_orientation_l2.params["target_gravity"] = target_gravity
+
+        # 脚底高度奖励 - 使用线性奖励，脚抬得越高奖励越大
+        self.rewards.handstand_calf_height_linear.weight = 4.0
+        self.rewards.handstand_calf_height_linear.params["asset_cfg"].body_names = [air_foot_pattern]
+        self.rewards.handstand_calf_height_linear.params["min_height"] = 0.8  # 最小高度 0.8m
+        self.rewards.handstand_calf_height_linear.params["max_height"] = 1.0 # 最大高度 1.0m，超过则饱和
+
+        # 关闭原来的指数型高度奖励
+        self.rewards.handstand_feet_height_exp.weight = 0
+
+        self.rewards.handstand_feet_on_air.weight = 1.0
+        self.rewards.handstand_feet_on_air.params["sensor_cfg"].body_names = [air_foot_pattern]
+        self.rewards.handstand_feet_on_air.params["threshold"] = 5.0
+        self.rewards.handstand_feet_on_air.params["knee_body_names"] = knee_patterns
+
+        self.rewards.handstand_feet_air_time.weight =1.0  # 提高权重
+        self.rewards.handstand_feet_air_time.params["_sensor_cfg"].body_names = [air_foot_pattern]
+        self.rewards.handstand_feet_air_time.params["_threshold"] = 0.3  # 降低门槛，更容易获得正奖励
+        self.rewards.handstand_feet_air_time.params["_knee_body_names"] = knee_patterns
+        self.rewards.handstand_feet_air_time.params["_contact_force_threshold"] = 5.0
+
+        # 前腿不良接触惩罚 - 只允许前轮接触地面，惩罚前腿 hip/thigh/calf 接触地面
+        self.rewards.handstand_front_leg_undesired_contacts.weight = -5.0
+        self.rewards.handstand_front_leg_undesired_contacts.params["sensor_cfg"].body_names = ["F.*(hip|thigh|calf)"]
+        self.rewards.handstand_front_leg_undesired_contacts.params["threshold"] = 5.0
+
+        # 身体接触地面惩罚 - 机器人躯干(base_link)接触地面时给予惩罚
+        self.rewards.handstand_body_contact.weight = -5.0
+        self.rewards.handstand_body_contact.params["threshold"] = 10.0
+
+        # 倒立专用速度惩罚 - 保持静止
+        self.rewards.handstand_lin_vel_xy_l2.weight = -1.5   # 惩罚 YZ 方向移动
+        self.rewards.handstand_ang_vel_xyz_l2.weight = -1.5  # 惩罚旋转
+
+        self.rewards.upward.weight = 0
+        # ------------------------------Events------------------------------
+        # 关闭复位随机化，保持每次 episode 初始姿态一致
+        #self.events.randomize_reset_base = None
+
+        # ------------------------------Curriculum------------------------------
+        # 禁用速度命令课程学习（倒立任务速度为0，不需要课程）
+        self.curriculum.command_levels_lin_vel = None
+        self.curriculum.command_levels_ang_vel = None
+
+        # ------------------------------Terminations------------------------------
+        # 注意：bad_orientation 会在 |gravity_z| > threshold 时终止
+        # 倒立目标是 gravity_z ≈ 0，但初始姿态是站立 (gravity_z = -1)
+        # 如果开启，会导致刚开始就终止，无法学习
+        # 建议：训练初期关闭，等学会倒立后再开启微调
+        # self.terminations.bad_orientation = DoneTerm(
+        #     func=mdp.bad_orientation,
+        #     params={"asset_cfg": SceneEntityCfg("robot"), "threshold": 0.7},
+        # )
+
+        # 删除权重为0的奖励
+        if self.__class__.__name__ == "MyDogHandstandHistFlatEnvCfg":
             self.disable_zero_weight_rewards()
