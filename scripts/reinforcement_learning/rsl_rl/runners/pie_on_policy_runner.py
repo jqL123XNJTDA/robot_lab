@@ -379,6 +379,13 @@ class PIEOnPolicyRunner:
         # 使用参数覆盖配置
         if num_learning_iterations is not None:
             self.max_iterations = num_learning_iterations
+
+        # 计算迭代范围（支持resume）
+        self.start_iteration = self.current_iteration  # 保存起始迭代数（用于ETA计算）
+        self.tot_iter = self.start_iteration + self.max_iterations  # 保存总目标迭代数
+
+        print(f"\n🔄 Training loop: {self.start_iteration} → {self.tot_iter} (total: {self.max_iterations} iterations)")
+
         # 重置环境
         obs, _ = self.env.reset()
         self._init_history_buffers()
@@ -393,7 +400,7 @@ class PIEOnPolicyRunner:
 
         start_time = time.time()
 
-        for iteration in range(self.max_iterations):
+        for iteration in range(self.start_iteration, self.tot_iter):
             self.current_iteration = iteration
             iter_start = time.time()
             collection_start = time.time()
@@ -580,8 +587,9 @@ class PIEOnPolicyRunner:
         # 获取action std
         mean_std = self.actor_critic.std.mean().item()
 
-        # 标题
-        title_str = f" \033[1m Learning iteration {iteration}/{self.max_iterations} \033[0m "
+        # 标题（使用tot_iter显示正确的目标迭代数）
+        tot_iter = getattr(self, 'tot_iter', self.max_iterations)
+        title_str = f" \033[1m Learning iteration {iteration}/{tot_iter} \033[0m "
 
         # 构建日志字符串
         if len(self.episode_rewards) > 0:
@@ -648,9 +656,11 @@ class PIEOnPolicyRunner:
 
         log_string += ep_string
 
-        # 时间统计
-        remaining_iters = self.max_iterations - iteration - 1
-        completed_iters = iteration - self.current_learning_iteration + 1
+        # 时间统计（使用tot_iter计算正确的剩余迭代数）
+        tot_iter = getattr(self, 'tot_iter', self.max_iterations)
+        start_iter = getattr(self, 'start_iteration', 0)
+        remaining_iters = tot_iter - iteration - 1
+        completed_iters = iteration - start_iter + 1
 
         log_string += (
             f"{'-' * width}\n"

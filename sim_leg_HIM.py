@@ -207,8 +207,8 @@ class RobotConfig:
 
         # PD controller stiffness Kp [Nm/rad] - 与 helios_leg.py 匹配
         self.kp = {
-            "right_thigh_joint": 120.0, "left_thigh_joint": 120.0,
-            "right_calf_joint": 120.0, "left_calf_joint": 120.0,
+            "right_thigh_joint": 100.0, "left_thigh_joint": 100.0,
+            "right_calf_joint": 100.0, "left_calf_joint": 100.0,
             "right_foot_joint": 0.0, "left_foot_joint": 0.0,  # Wheels use velocity control, stiffness=0
         }
 
@@ -216,7 +216,7 @@ class RobotConfig:
         self.kd = {
             "right_thigh_joint": 5.0, "left_thigh_joint": 5.0,
             "right_calf_joint": 5.0, "left_calf_joint": 5.0,
-            "right_foot_joint": 1.0, "left_foot_joint": 1.0,
+            "right_foot_joint": 2, "left_foot_joint": 2,
         }
 
         # Integral gain Ki [Nm/(rad*s)]
@@ -433,7 +433,7 @@ class Cmd:
         self.vx_step = 0.1
         self.vy_step = 0.1
         self.vyaw_step = 0.1
-        self.vx_max = 1.0
+        self.vx_max = 2.0
         self.vy_max = 1.0
         self.vyaw_max = 1.0
 
@@ -1127,7 +1127,7 @@ if __name__ == '__main__':
                         default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/helios_leg/mjcf/helios_leg.xml',
                         help='Path to MuJoCo XML model')
     parser.add_argument('--policy-path', type=str,
-                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_hist_flat/2025-12-14_23-45-41/exported/policy.pt',
+                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_hist_flat/2025-12-18_18-14-46/exported/policy.pt',
                         help='Path to HIM trained policy (.pt)')
     parser.add_argument('--duration', type=float, default=120.0, help='Simulation duration [s]')
     parser.add_argument('--dt', type=float, default=0.001, help='Physics timestep [s]')

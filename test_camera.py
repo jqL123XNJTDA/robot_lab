@@ -71,7 +71,7 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 import robot_lab.tasks  # noqa: F401
 
 # ========== 深度图处理参数 ==========
-CLIP_RANGE = (0.1, 3.0)
+CLIP_RANGE = (0.3, 3.0)
 RESIZE = (87, 58)
 resize_transform = torchvision.transforms.Resize(
     (RESIZE[1], RESIZE[0]),
@@ -90,6 +90,8 @@ def _crop_depth_image(depth_image):
     return depth_image[:-2, 4:-4]
 
 def _normalize_depth_image(depth_image):
+    # 先 clip 到有效范围，防止归一化结果超出 [-0.5, 0.5]
+    depth_image = torch.clamp(depth_image, CLIP_RANGE[0], CLIP_RANGE[1])
     depth_image = (depth_image - CLIP_RANGE[0]) / (CLIP_RANGE[1] - CLIP_RANGE[0]) - 0.5
     return depth_image
 
@@ -171,7 +173,7 @@ def add_depth_camera_to_env_cfg(env_cfg):
         debug_vis=True,
         offset=RayCasterCameraCfg.OffsetCfg(
             pos=(0.6, 0.0, 0.1),
-            rot = (0.9239, 0.0, 0.3827, 0.0),
+            rot = (0.9659, 0.0, 0.2588, 0.0),  # 朝下 30°
             convention = "world",
         ),
         pattern_cfg=patterns.PinholeCameraPatternCfg(

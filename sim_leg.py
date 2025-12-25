@@ -93,8 +93,8 @@ class RobotConfig:
 
         # PD controller stiffness Kp [Nm/rad] - 与 helios_leg.py 匹配
         self.kp = {
-            "right_thigh_joint": 100.0, "left_thigh_joint": 100.0,
-            "right_calf_joint": 100.0, "left_calf_joint": 100.0,
+            "right_thigh_joint": 120.0, "left_thigh_joint": 120.0,
+            "right_calf_joint": 120.0, "left_calf_joint": 120.0,
             "right_foot_joint": 0.0, "left_foot_joint": 0.0,  # Wheels use velocity control, stiffness=0
         }
 
@@ -985,7 +985,7 @@ if __name__ == '__main__':
                         default='/home/liu/Desktop/robot_lab/source/robot_lab/data/Robots/helios_leg/mjcf/helios_leg.xml',
                         help='Path to MuJoCo XML model')
     parser.add_argument('--policy-path', type=str,
-                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_jump/2025-12-13_15-29-40/exported/policy.pt',
+                        default='/home/liu/Desktop/robot_lab/logs/rsl_rl/helios_leg_jump/2025-12-14_17-43-18/exported/policy.pt',
                         help='Path to trained policy (.pt)')
     parser.add_argument('--duration', type=float, default=120.0, help='Simulation duration [s]')
     parser.add_argument('--dt', type=float, default=0.001, help='Physics timestep [s]')

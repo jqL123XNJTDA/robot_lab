@@ -43,6 +43,19 @@
         <!-- 地面 -->
         <geom name="ground" type="plane" size="0 0 1" pos="0.001 0 0" quat="1 0 0 0" material="matplane" condim="3" conaffinity='15' friction="2.0 0.01 0.0001"/>
 
+        <!-- 跳跃斜坡 (Jump Ramp)
+             水平投影: 1.1m, 坡角: 17°, 宽度: 0.9m
+             坡面长度: 1.150m, 高度: 0.336m
+             位置: 机器人前方 1.5m 处开始
+        -->
+        <geom name="jump_ramp" type="box"
+              size="0.575 0.45 0.01"
+              pos="2.05 0 0.168"
+              euler="0 -0.2967 0"
+              rgba="0.6 0.4 0.2 1"
+              condim="3" conaffinity="15"
+              friction="1.5 0.01 0.0001"/>
+
         <body name="base_link" pos='0 0 0.32'>
             <!-- IMU 传感器位置 -->
             <site name='imu' size='0.01' pos='0.0 0 0.0' quat='1 0 0 0'/>

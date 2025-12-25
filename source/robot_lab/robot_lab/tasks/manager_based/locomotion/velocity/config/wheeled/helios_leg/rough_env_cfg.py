@@ -402,7 +402,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # XY方向角速度惩罚（抑制翻滚/俯仰晃动）- 双轮腿容易翻滚，需加强
         self.rewards.ang_vel_xy_l2.weight = -0.05
         # 平坦姿态惩罚（鼓励保持水平）- 双轮腿平衡难度大，需加强
-        self.rewards.flat_orientation_l2.weight = -50
+        self.rewards.flat_orientation_l2.weight = -30
         # 基座高度惩罚（禁用，改用 base_height_reward）
         self.rewards.base_height_l2.weight = -50
         self.rewards.base_height_l2.params["target_height"] = 0.32
@@ -429,10 +429,10 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.joint_vel_wheel_l2.weight = 0
         self.rewards.joint_vel_wheel_l2.params["asset_cfg"].joint_names = self.wheel_joint_names
         # 腿部关节加速度惩罚（平滑运动）
-        self.rewards.joint_acc_l2.weight = -2.5e-7
+        self.rewards.joint_acc_l2.weight = -1e-7
         self.rewards.joint_acc_l2.params["asset_cfg"].joint_names = self.leg_joint_names
         # 轮子关节加速度惩罚
-        self.rewards.joint_acc_wheel_l2.weight = -2.5e-9
+        self.rewards.joint_acc_wheel_l2.weight = -2.5e-5
         self.rewards.joint_acc_wheel_l2.params["asset_cfg"].joint_names = self.wheel_joint_names
         # 关节位置限位惩罚（避免触碰关节极限）
         self.rewards.joint_pos_limits.weight = -5
@@ -444,10 +444,10 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.joint_power.weight = 0
         self.rewards.joint_power.params["asset_cfg"].joint_names = self.leg_joint_names
         # 静止时关节运动惩罚（命令为零时保持静止）- 启用以增强静止稳定性
-        self.rewards.stand_still.weight = -0.01
+        self.rewards.stand_still.weight = -2
         self.rewards.stand_still.params["asset_cfg"].joint_names = self.leg_joint_names
         # 关节位置偏差惩罚
-        self.rewards.joint_pos_penalty.weight = -0.01
+        self.rewards.joint_pos_penalty.weight = 0
         self.rewards.joint_pos_penalty.params["asset_cfg"].joint_names = self.leg_joint_names
         #self.rewards.joint_pos_penalty.params["velocity_threshold"] = 100
         # 轮子速度与地面速度不匹配惩罚（防止打滑）
@@ -460,7 +460,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             ["right_(thigh|calf)_joint", "left_(thigh|calf)_joint"],
         ]
         # 反向镜像奖励（左右关节角度符号相反: left = -right）
-        self.rewards.joint_mirror_neg.weight = -20
+        self.rewards.joint_mirror_neg.weight = -30
         self.rewards.joint_mirror_neg.params["mirror_joints"] = [
             ["right_thigh_joint", "left_thigh_joint"],
             ["right_calf_joint", "left_calf_joint"],
@@ -468,11 +468,11 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # === 动作惩罚 ===
         # 动作变化率惩罚（平滑动作）
-        self.rewards.action_rate_l2.weight = -0.05
+        self.rewards.action_rate_l2.weight = -0.1
 
         # === 接触传感器相关 ===
         # 非期望接触惩罚（除轮子外的接触）
-        self.rewards.undesired_contacts.weight = -5.0
+        self.rewards.undesired_contacts.weight = -30.0
         self.rewards.undesired_contacts.params["sensor_cfg"].body_names = [f"^(?!.*{self.foot_link_name}).*"]
         self.rewards.undesired_contacts.params["threshold"] = 1.0
         # 接触力惩罚（轮子接触力过大）
@@ -523,7 +523,7 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # === Foot 位置奖励 ===
         # 左右 foot X 方向对齐惩罚（使左右轮在 X 方向上并列）
-        self.rewards.feet_x_alignment_l2.weight = -2
+        self.rewards.feet_x_alignment_l2.weight = 0
         self.rewards.feet_x_alignment_l2.params["asset_cfg"].body_names = [self.foot_link_name]
         # foot X 方向偏移惩罚（使轮子保持在目标 X 位置）
         # target_x=0 表示轮子应在基座正下方；根据 URDF 几何可调整为其他值
@@ -546,19 +546,19 @@ class HeliosLegRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # # 线速度命令课程（根据 track_lin_vel_x_exp 奖励逐步增加速度范围）
         self.curriculum.command_levels_lin_vel.params["reward_term_name"] = "track_lin_vel_x_exp"
-        self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.0, 1.0)  # 从0开始
+        self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.2, 1.0)  # 从0开始
         # 角速度命令课程 - 阶段1禁用
       
         self.curriculum.command_levels_ang_vel.params["reward_term_name"] = "track_ang_vel_z_exp"
-        self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.0, 0.5)  # 阶段1禁用
+        self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.1, 0.5)  # 阶段1禁用
 
         # ------------------------------Commands 命令配置------------------------------
         # X方向线速度命令范围 (m/s)
-        self.commands.base_velocity.ranges.lin_vel_x = (-1, 1)
+        self.commands.base_velocity.ranges.lin_vel_x = (-2, 2)
         # Y方向线速度命令范围 (m/s) - 禁用
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         # Z方向角速度命令范围 (rad/s) - 阶段1禁用
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1, 1)
 
 
 @configclass
